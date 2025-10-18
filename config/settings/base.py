@@ -42,6 +42,12 @@ INSTALLED_APPS = [
     # Local apps
     'apps.authentication',
     'apps.devices',
+    'apps.alerts',
+    'apps.recommendations',
+    'apps.analytics',
+    'apps.departments',
+    'apps.configuration',
+    'apps.notifications',
 ]
 
 MIDDLEWARE = [
