@@ -17,12 +17,6 @@ urlpatterns = [
     # API endpoints
     path('api/auth/', include('apps.authentication.urls')),
     path('api/', include('apps.devices.urls')),
-    path('api/alerts/', include('apps.alerts.urls')),
-    path('api/recommendations/', include('apps.recommendations.urls')),
-    path('api/analytics/', include('apps.analytics.urls')),
-    path('api/departments/', include('apps.departments.urls')),
-    path('api/config/', include('apps.configuration.urls')),
-    path('api/notifications/', include('apps.notifications.urls')),
 ]
 
 if settings.DEBUG:
