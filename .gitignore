@@ -4,9 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -23,6 +20,12 @@ wheels/
 .installed.cfg
 *.egg
 
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
 # Django
 *.log
 local_settings.py
@@ -31,11 +34,10 @@ db.sqlite3-journal
 media/
 staticfiles/
 
-# Environment
+# Environment variables
 .env
-.env.local
 
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -46,15 +48,22 @@ staticfiles/
 .DS_Store
 Thumbs.db
 
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# ML Models
+*.pkl
+*.h5
+*.joblib
+
 # Testing
 .coverage
 htmlcov/
 .pytest_cache/
 .tox/
 
-# Celery
-celerybeat-schedule
-celerybeat.pid
-
-# Docker
-*.pid
+# Database
+*.db
+*.sqlite
+*.sqlite3
