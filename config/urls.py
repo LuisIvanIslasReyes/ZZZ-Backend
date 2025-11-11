@@ -15,8 +15,36 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from apps.devices.views import DeviceViewSet
+from apps.sensors.views import SensorDataViewSet, ProcessedMetricsViewSet
+from apps.analytics.views import FatigueAlertViewSet, RoutineRecommendationViewSet
+from apps.analytics.dashboard_views import DashboardViewSet
+from apps.analytics.visualization_views import VisualizationViewSet
+from apps.analytics.report_views import ReportViewSet
+from apps.users.admin_views import AdminViewSet
+
+# Router para ViewSets
+router = DefaultRouter()
+router.register(r'devices', DeviceViewSet, basename='device')
+router.register(r'sensor-data', SensorDataViewSet, basename='sensordata')
+router.register(r'processed-metrics', ProcessedMetricsViewSet, basename='processedmetrics')
+router.register(r'alerts', FatigueAlertViewSet, basename='fatiguealert')
+router.register(r'recommendations', RoutineRecommendationViewSet, basename='routinerecommendation')
+router.register(r'dashboard', DashboardViewSet, basename='dashboard')
+router.register(r'visualizations', VisualizationViewSet, basename='visualization')
+router.register(r'reports', ReportViewSet, basename='report')
+router.register(r'admin', AdminViewSet, basename='admin')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/auth/', include('apps.users.urls')),
+    path('api/', include(router.urls)),
+    
+    # OpenAPI/Swagger Documentation
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]

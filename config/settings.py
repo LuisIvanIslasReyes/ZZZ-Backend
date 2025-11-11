@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
+    'django_filters',
+    'drf_spectacular',  # OpenAPI/Swagger
     
     # Local apps
     'apps.users',
@@ -146,8 +148,8 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Custom User Model (se configurará en Fase 2)
-# AUTH_USER_MODEL = 'users.CustomUser'
+# Custom User Model
+AUTH_USER_MODEL = 'users.CustomUser'
 
 # REST Framework Configuration
 REST_FRAMEWORK = {
@@ -159,7 +161,19 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 50,
+    'DEFAULT_FILTER_BACKENDS': (
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ),
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
+    'DATE_FORMAT': '%Y-%m-%d',
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+    ),
+    # OpenAPI/Swagger Schema
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 # JWT Configuration
@@ -189,5 +203,34 @@ MQTT_PASSWORD = config('MQTT_PASSWORD', default='')
 MQTT_KEEPALIVE = config('MQTT_KEEPALIVE', default=60, cast=int)
 MQTT_TOPICS = {
     'SENSOR_DATA': 'devices/+/sensors',  # + es wildcard para device_id
+}
+
+# DRF Spectacular (OpenAPI/Swagger) Configuration
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Fatigue Detection System API',
+    'DESCRIPTION': 'Sistema de Detección de Fatiga mediante IoT y Machine Learning',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SCHEMA_PATH_PREFIX': r'/api/',
+    'SERVERS': [
+        {'url': 'http://localhost:8000', 'description': 'Servidor de Desarrollo'},
+        {'url': 'https://api.fatigue-detection.com', 'description': 'Servidor de Producción'},
+    ],
+    'TAGS': [
+        {'name': 'Authentication', 'description': 'Autenticación y gestión de usuarios'},
+        {'name': 'Devices', 'description': 'Gestión de dispositivos ESP32'},
+        {'name': 'Sensors', 'description': 'Datos de sensores y métricas procesadas'},
+        {'name': 'Analytics', 'description': 'Alertas de fatiga y análisis de datos'},
+        {'name': 'Recommendations', 'description': 'Recomendaciones de optimización de rutinas'},
+        {'name': 'Admin', 'description': 'Panel de administración'},
+    ],
+    'CONTACT': {
+        'name': 'API Support',
+        'email': 'support@fatigue-detection.com',
+    },
+    'LICENSE': {
+        'name': 'MIT License',
+    },
 }
 
