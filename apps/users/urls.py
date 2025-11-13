@@ -6,11 +6,11 @@ app_name = 'users'
 
 urlpatterns = [
     # ==================== Autenticación ====================
-    path('auth/login/', views.LoginView.as_view(), name='login'),
-    path('auth/logout/', views.LogoutView.as_view(), name='logout'),
-    path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('auth/change-password/', views.ChangePasswordView.as_view(), name='change_password'),
-    path('auth/me/', views.CurrentUserView.as_view(), name='current_user'),
+    path('login/', views.LoginView.as_view(), name='login'),
+    path('logout/', views.LogoutView.as_view(), name='logout'),
+    path('refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('change-password/', views.ChangePasswordView.as_view(), name='change_password'),
+    path('me/', views.CurrentUserView.as_view(), name='current_user'),
     
     # ==================== Admin - Gestión de Supervisores ====================
     path('admin/supervisors/', views.SupervisorListCreateView.as_view(), name='supervisor_list_create'),

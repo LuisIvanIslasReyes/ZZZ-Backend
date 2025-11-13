@@ -67,3 +67,17 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+
+# Node.js / JS / TS / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.tsbuildinfo
+dist/
+build/
+coverage/
