@@ -1,0 +1,331 @@
+{
+  "timestamp": "2025-11-14 18:29:28",
+  "backend_url": "http://localhost:8000",
+  "total_tests": 20,
+  "passed": 20,
+  "failed": 0,
+  "success_rate": 100.0,
+  "results": [
+    {
+      "id": 1,
+      "category": "Autenticación",
+      "test": "Login Exitoso",
+      "description": "Verifica que un usuario puede autenticarse con credenciales válidas",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:28:42",
+      "response_data": {
+        "has_access_token": true,
+        "has_refresh_token": true,
+        "user_data": true
+      },
+      "request_info": {
+        "endpoint": "/api/auth/login/",
+        "method": "POST"
+      },
+      "error": null
+    },
+    {
+      "id": 2,
+      "category": "Autenticación",
+      "test": "Login con Credenciales Inválidas",
+      "description": "Verifica que se rechacen credenciales incorrectas (esperado: 400 o 401)",
+      "success": true,
+      "status_code": 400,
+      "timestamp": "2025-11-14 18:28:45",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/auth/login/",
+        "method": "POST"
+      },
+      "error": null
+    },
+    {
+      "id": 3,
+      "category": "Autenticación",
+      "test": "Login sin Campos Requeridos",
+      "description": "Verifica validación de campos obligatorios (esperado: 400)",
+      "success": true,
+      "status_code": 400,
+      "timestamp": "2025-11-14 18:28:47",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/auth/login/",
+        "method": "POST"
+      },
+      "error": null
+    },
+    {
+      "id": 4,
+      "category": "Dispositivos",
+      "test": "Listar Dispositivos",
+      "description": "Obtiene la lista completa de dispositivos registrados",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:28:49",
+      "response_data": {
+        "total_devices": 0,
+        "has_results": true
+      },
+      "request_info": {
+        "endpoint": "/api/devices/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 5,
+      "category": "Dispositivos",
+      "test": "Filtrar Dispositivos Activos",
+      "description": "Filtra dispositivos por estado activo usando query params",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:28:52",
+      "response_data": {
+        "active_devices": 0
+      },
+      "request_info": {
+        "endpoint": "/api/devices/?is_active=true",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 6,
+      "category": "Dispositivos",
+      "test": "Acceso sin Autenticación",
+      "description": "Verifica que se requiera token JWT (esperado: 401)",
+      "success": true,
+      "status_code": 401,
+      "timestamp": "2025-11-14 18:28:54",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/devices/",
+        "method": "GET",
+        "auth": "none"
+      },
+      "error": null
+    },
+    {
+      "id": 7,
+      "category": "Datos de Sensores",
+      "test": "Listar Datos de Sensores",
+      "description": "Obtiene todos los registros de datos de sensores",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:28:57",
+      "response_data": {
+        "total_records": 0
+      },
+      "request_info": {
+        "endpoint": "/api/sensor-data/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 8,
+      "category": "Datos de Sensores",
+      "test": "Ordenar por Fecha (DESC)",
+      "description": "Ordena los datos de sensores por timestamp descendente",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:28:59",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/sensor-data/?ordering=-timestamp",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 9,
+      "category": "Datos de Sensores",
+      "test": "Paginación",
+      "description": "Verifica que la paginación funcione correctamente",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:01",
+      "response_data": {
+        "has_pagination": true,
+        "page_size": 0
+      },
+      "request_info": {
+        "endpoint": "/api/sensor-data/?page=1&page_size=10",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 10,
+      "category": "Métricas Procesadas",
+      "test": "Listar Métricas",
+      "description": "Obtiene todas las métricas calculadas por el sistema",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:04",
+      "response_data": {
+        "total_metrics": 0
+      },
+      "request_info": {
+        "endpoint": "/api/processed-metrics/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 11,
+      "category": "Métricas Procesadas",
+      "test": "Filtrar por Nivel de Actividad",
+      "description": "Filtra métricas con nivel de actividad alto",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:06",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/processed-metrics/?activity_level=high",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 12,
+      "category": "Alertas",
+      "test": "Listar Alertas",
+      "description": "Obtiene todas las alertas de fatiga generadas",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:09",
+      "response_data": {
+        "total_alerts": 0
+      },
+      "request_info": {
+        "endpoint": "/api/alerts/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 13,
+      "category": "Alertas",
+      "test": "Filtrar Alertas Activas",
+      "description": "Obtiene solo las alertas que están actualmente activas",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:11",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/alerts/?is_active=true",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 14,
+      "category": "Recomendaciones",
+      "test": "Listar Recomendaciones",
+      "description": "Obtiene todas las recomendaciones generadas por el sistema",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:14",
+      "response_data": {
+        "total_recommendations": 0
+      },
+      "request_info": {
+        "endpoint": "/api/recommendations/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 15,
+      "category": "Recomendaciones",
+      "test": "Filtrar por Tipo",
+      "description": "Filtra recomendaciones de tipo 'break' (descanso)",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:16",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/recommendations/?type=break",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 16,
+      "category": "Documentación",
+      "test": "Schema OpenAPI",
+      "description": "Verifica que el schema de la API esté disponible",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:19",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/schema/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 17,
+      "category": "Documentación",
+      "test": "Swagger UI",
+      "description": "Verifica que la documentación interactiva esté accesible",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:21",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/docs/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 18,
+      "category": "Documentación",
+      "test": "ReDoc",
+      "description": "Verifica que ReDoc esté disponible como documentación alternativa",
+      "success": true,
+      "status_code": 200,
+      "timestamp": "2025-11-14 18:29:23",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/redoc/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 19,
+      "category": "Manejo de Errores",
+      "test": "Endpoint No Existente",
+      "description": "Verifica que se retorne 404 para rutas inválidas",
+      "success": true,
+      "status_code": 404,
+      "timestamp": "2025-11-14 18:29:26",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/endpoint-inexistente/",
+        "method": "GET"
+      },
+      "error": null
+    },
+    {
+      "id": 20,
+      "category": "Manejo de Errores",
+      "test": "Método No Permitido",
+      "description": "Verifica que se retorne 405 para métodos HTTP no soportados",
+      "success": true,
+      "status_code": 405,
+      "timestamp": "2025-11-14 18:29:28",
+      "response_data": null,
+      "request_info": {
+        "endpoint": "/api/devices/",
+        "method": "DELETE"
+      },
+      "error": null
+    }
+  ]
+}
