@@ -6,6 +6,7 @@ class Device(models.Model):
     """
     Modelo para dispositivos ESP32 wearables.
     Cada empleado tiene asignado 1 dispositivo.
+    El dispositivo pertenece a la empresa del empleado/supervisor.
     """
     device_identifier = models.CharField(
         max_length=50,
@@ -27,6 +28,15 @@ class Device(models.Model):
         related_name='managed_devices',
         limit_choices_to={'role': 'supervisor'},
         help_text="Supervisor que gestiona este dispositivo"
+    )
+    
+    company = models.ForeignKey(
+        'companies.Company',
+        on_delete=models.CASCADE,
+        related_name='devices',
+        null=True,  # Temporal para migración
+        blank=True,
+        help_text="Empresa a la que pertenece el dispositivo"
     )
     
     is_active = models.BooleanField(
@@ -51,6 +61,7 @@ class Device(models.Model):
         indexes = [
             models.Index(fields=['employee']),
             models.Index(fields=['supervisor']),
+            models.Index(fields=['company']),
             models.Index(fields=['is_active']),
         ]
     
@@ -66,8 +77,13 @@ class Device(models.Model):
         if self.supervisor and self.supervisor.role != 'supervisor':
             raise ValueError("Solo usuarios con rol 'supervisor' pueden gestionar dispositivos")
         
-        # El supervisor del dispositivo debe ser el mismo que el supervisor del empleado
-        if self.employee and self.employee.supervisor != self.supervisor:
-            raise ValueError("El supervisor del dispositivo debe coincidir con el supervisor del empleado")
+        # Validar que todos pertenezcan a la misma empresa
+        if self.employee and self.supervisor and self.company:
+            if self.employee.company != self.company:
+                raise ValueError("El empleado debe pertenecer a la empresa del dispositivo")
+            if self.supervisor.company != self.company:
+                raise ValueError("El supervisor debe pertenecer a la empresa del dispositivo")
+            if self.employee.supervisor != self.supervisor:
+                raise ValueError("El supervisor del dispositivo debe coincidir con el supervisor del empleado")
         
         super().save(*args, **kwargs)

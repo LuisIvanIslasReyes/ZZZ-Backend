@@ -160,15 +160,19 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
     GET/POST /api/supervisor/employees/
     """
     permission_classes = [CanManageEmployees]
+    pagination_class = None  # Deshabilitar paginación para esta vista
     
     def get_queryset(self):
         user = self.request.user
         if user.is_admin():
-            # Admin ve todos los empleados
-            return User.objects.filter(role='employee').select_related('supervisor')
+            # Admin ve todos los empleados de todas las empresas
+            return User.objects.filter(role='employee').select_related('supervisor', 'company')
         elif user.is_supervisor():
-            # Supervisor solo ve sus empleados
-            return user.employees.all().select_related('supervisor')
+            # Supervisor solo ve empleados de su empresa
+            return User.objects.filter(
+                role='employee',
+                company=user.company
+            ).select_related('supervisor', 'company')
         return User.objects.none()
     
     def get_serializer_class(self):
@@ -177,8 +181,12 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         return EmployeeListSerializer
     
     def perform_create(self, serializer):
-        # Asignar el supervisor actual al empleado
-        serializer.save(supervisor=self.request.user, role='employee')
+        # Asignar el supervisor actual y la empresa al empleado
+        serializer.save(
+            supervisor=self.request.user,
+            company=self.request.user.company,
+            role='employee'
+        )
 
 
 class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -187,13 +195,18 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     GET/PUT/DELETE /api/supervisor/employees/{id}/
     """
     permission_classes = [CanManageEmployees]
+    pagination_class = None  # Deshabilitar paginación
     
     def get_queryset(self):
         user = self.request.user
         if user.is_admin():
-            return User.objects.filter(role='employee').select_related('supervisor')
+            return User.objects.filter(role='employee').select_related('supervisor', 'company')
         elif user.is_supervisor():
-            return user.employees.all().select_related('supervisor')
+            # Supervisor solo ve empleados de su empresa
+            return User.objects.filter(
+                role='employee',
+                company=user.company
+            ).select_related('supervisor', 'company')
         return User.objects.none()
     
     def get_serializer_class(self):
@@ -202,6 +215,10 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         return UserSerializer
     
     def perform_destroy(self, instance):
+        # Verificar que el empleado pertenezca a la empresa del supervisor
+        if self.request.user.is_supervisor() and instance.company != self.request.user.company:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("No puedes eliminar empleados de otra empresa")
         # Soft delete
         instance.is_active = False
         instance.save()

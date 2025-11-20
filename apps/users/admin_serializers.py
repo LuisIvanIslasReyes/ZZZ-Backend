@@ -19,6 +19,7 @@ class SupervisorListSerializer(serializers.ModelSerializer):
     Serializer para listar supervisores con información resumida.
     """
     full_name = serializers.SerializerMethodField()
+    company_name = serializers.CharField(source='company.name', read_only=True)
     employees_count = serializers.SerializerMethodField()
     active_alerts_count = serializers.SerializerMethodField()
     devices_count = serializers.SerializerMethodField()
@@ -31,6 +32,8 @@ class SupervisorListSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'full_name',
+            'company',
+            'company_name',
             'is_active',
             'employees_count',
             'devices_count',
@@ -65,6 +68,7 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
     Incluye lista de empleados y estadísticas completas.
     """
     full_name = serializers.SerializerMethodField()
+    company_name = serializers.CharField(source='company.name', read_only=True)
     employees = serializers.SerializerMethodField()
     statistics = serializers.SerializerMethodField()
     recent_activity = serializers.SerializerMethodField()
@@ -77,6 +81,8 @@ class SupervisorDetailSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'full_name',
+            'company',
+            'company_name',
             'is_active',
             'created_at',
             'updated_at',
@@ -219,6 +225,7 @@ class SupervisorCreateSerializer(serializers.ModelSerializer):
             'password_confirm',
             'first_name',
             'last_name',
+            'company',
             'is_active'
         ]
     
@@ -229,21 +236,26 @@ class SupervisorCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, data):
-        """Validar que las contraseñas coincidan."""
+        """Validar que las contraseñas coincidan y que company esté presente."""
         if data['password'] != data['password_confirm']:
             raise serializers.ValidationError({
                 'password_confirm': 'Las contraseñas no coinciden.'
             })
+        
+        if not data.get('company'):
+            raise serializers.ValidationError({
+                'company': 'Debe especificar una empresa para el supervisor.'
+            })
+        
         return data
     
     def create(self, validated_data):
-        """Crear supervisor con el admin actual."""
+        """Crear supervisor asociado a una empresa."""
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
         
-        # Establecer rol y admin
+        # Establecer rol de supervisor
         validated_data['role'] = 'supervisor'
-        validated_data['admin'] = self.context['request'].user
         
         # Crear usuario
         user = User.objects.create(**validated_data)
@@ -262,6 +274,7 @@ class SupervisorUpdateSerializer(serializers.ModelSerializer):
         fields = [
             'first_name',
             'last_name',
+            'company',
             'is_active'
         ]
     

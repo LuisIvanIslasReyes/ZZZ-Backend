@@ -51,16 +51,22 @@ class AdminViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], url_path='supervisors')
     def list_supervisors(self, request):
         """
-        Lista todos los supervisores del admin.
+        Lista todos los supervisores.
+        Admin puede ver supervisores de todas las empresas.
         
         Query params:
+        - company: Filtrar por empresa específica
         - is_active: Filtrar por estado (true/false)
         - search: Buscar por nombre o email
         """
         supervisors = User.objects.filter(
-            role='supervisor',
-            admin=request.user
-        ).select_related('admin').prefetch_related('employees', 'devices')
+            role='supervisor'
+        ).select_related('company').prefetch_related('employees')
+        
+        # Filtro por empresa
+        company_id = request.query_params.get('company')
+        if company_id:
+            supervisors = supervisors.filter(company_id=company_id)
         
         # Filtros
         is_active = request.query_params.get('is_active')

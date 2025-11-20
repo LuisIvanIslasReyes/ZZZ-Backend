@@ -25,6 +25,7 @@ from apps.analytics.dashboard_views import DashboardViewSet
 from apps.analytics.visualization_views import VisualizationViewSet
 from apps.analytics.report_views import ReportViewSet
 from apps.users.admin_views import AdminViewSet
+from apps.users.views import EmployeeListCreateView, EmployeeDetailView
 
 # Router para ViewSets
 router = DefaultRouter()
@@ -41,6 +42,11 @@ router.register(r'admin', AdminViewSet, basename='admin')
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('apps.users.urls')),
+    # Rutas de administración de empresas
+    path('api/admin/', include('apps.companies.urls')),
+    # Rutas adicionales para compatibilidad con el frontend
+    path('api/supervisor/employees/', EmployeeListCreateView.as_view(), name='employee_list_create_api'),
+    path('api/supervisor/employees/<int:pk>/', EmployeeDetailView.as_view(), name='employee_detail_api'),
     path('api/', include(router.urls)),
     
     # OpenAPI/Swagger Documentation

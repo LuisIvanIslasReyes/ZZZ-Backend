@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'drf_spectacular',  # OpenAPI/Swagger
     
     # Local apps
+    'apps.companies',  # Nueva app para empresas
     'apps.users',
     'apps.devices',
     'apps.sensors',
@@ -234,3 +235,39 @@ SPECTACULAR_SETTINGS = {
     },
 }
 
+# Logging Configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'loggers': {
+        'apps.mqtt_client': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}

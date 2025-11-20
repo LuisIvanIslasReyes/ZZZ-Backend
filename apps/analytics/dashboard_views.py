@@ -36,6 +36,145 @@ class DashboardViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        GET /api/dashboard/stats/
+        Estadísticas generales simplificadas para el frontend.
+        Retorna datos diferentes según el rol del usuario.
+        """
+        user = request.user
+        now = timezone.now()
+        today = now.date()
+        last_24h = now - timedelta(hours=24)
+        
+        if user.role == 'employee':
+            # Dashboard simplificado para empleado
+            try:
+                device = Device.objects.get(employee=user)
+                active_devices = 1 if device.is_active else 0
+            except Device.DoesNotExist:
+                active_devices = 0
+            
+            # Métricas del empleado
+            latest_metric = ProcessedMetrics.objects.filter(
+                employee=user
+            ).order_by('-window_start').first()
+            
+            recent_metrics = ProcessedMetrics.objects.filter(
+                employee=user,
+                window_start__gte=last_24h
+            )
+            
+            avg_fatigue = recent_metrics.aggregate(
+                avg=Avg('fatigue_index')
+            )['avg'] or 0
+            
+            my_alerts_today = FatigueAlert.objects.filter(
+                employee=user,
+                created_at__date=today
+            ).count()
+            
+            my_pending_alerts = FatigueAlert.objects.filter(
+                employee=user,
+                is_resolved=False
+            ).count()
+            
+            return Response({
+                'total_employees': 1,  # Solo el empleado
+                'active_devices': active_devices,
+                'pending_alerts': my_pending_alerts,
+                'avg_fatigue_score': round(avg_fatigue, 2),
+                'alerts_today': my_alerts_today,
+                'high_risk_employees': 1 if avg_fatigue >= 70 else 0,
+            })
+            
+        elif user.role == 'supervisor':
+            # Dashboard para supervisor - su equipo
+            team_employees = CustomUser.objects.filter(
+                supervisor=user,
+                role='employee',
+                is_active=True
+            )
+            total_employees = team_employees.count()
+            
+            # Dispositivos activos del equipo
+            active_devices = Device.objects.filter(
+                employee__in=team_employees,
+                is_active=True
+            ).count()
+            
+            # Alertas pendientes del equipo
+            pending_alerts = FatigueAlert.objects.filter(
+                employee__in=team_employees,
+                is_resolved=False
+            ).count()
+            
+            # Alertas de hoy del equipo
+            alerts_today = FatigueAlert.objects.filter(
+                employee__in=team_employees,
+                created_at__date=today
+            ).count()
+            
+            # Promedio de fatiga del equipo (últimas 24 horas)
+            avg_fatigue = ProcessedMetrics.objects.filter(
+                employee__in=team_employees,
+                window_start__gte=last_24h
+            ).aggregate(avg=Avg('fatigue_index'))['avg'] or 0
+            
+            # Empleados de alto riesgo
+            high_risk = ProcessedMetrics.objects.filter(
+                employee__in=team_employees,
+                window_start__gte=last_24h
+            ).values('employee').annotate(
+                avg_fatigue=Avg('fatigue_index')
+            ).filter(avg_fatigue__gte=70).count()
+            
+            return Response({
+                'total_employees': total_employees,
+                'active_devices': active_devices,
+                'pending_alerts': pending_alerts,
+                'avg_fatigue_score': round(avg_fatigue, 2),
+                'alerts_today': alerts_today,
+                'high_risk_employees': high_risk,
+            })
+            
+        else:  # admin o cualquier otro rol
+            # Dashboard completo del sistema
+            total_employees = CustomUser.objects.filter(
+                role='employee',
+                is_active=True
+            ).count()
+            
+            active_devices = Device.objects.filter(is_active=True).count()
+            
+            pending_alerts = FatigueAlert.objects.filter(is_resolved=False).count()
+            
+            alerts_today = FatigueAlert.objects.filter(
+                created_at__date=today
+            ).count()
+            
+            # Promedio de fatiga del sistema (últimas 24 horas)
+            avg_fatigue = ProcessedMetrics.objects.filter(
+                window_start__gte=last_24h
+            ).aggregate(avg=Avg('fatigue_index'))['avg'] or 0
+            
+            # Empleados de alto riesgo en todo el sistema
+            high_risk = ProcessedMetrics.objects.filter(
+                window_start__gte=last_24h
+            ).values('employee').annotate(
+                avg_fatigue=Avg('fatigue_index')
+            ).filter(avg_fatigue__gte=70).count()
+            
+            return Response({
+                'total_employees': total_employees,
+                'active_devices': active_devices,
+                'pending_alerts': pending_alerts,
+                'avg_fatigue_score': round(avg_fatigue, 2),
+                'alerts_today': alerts_today,
+                'high_risk_employees': high_risk,
+            })
+
+    @action(detail=False, methods=['get'])
     def overview(self, request):
         """
         GET /api/dashboard/overview/
@@ -52,8 +191,8 @@ class DashboardViewSet(viewsets.ViewSet):
         # Alertas
         today = timezone.now().date()
         total_alerts = FatigueAlert.objects.count()
-        pending_alerts = FatigueAlert.objects.filter(resolved=False).count()
-        critical_alerts = FatigueAlert.objects.filter(severity='critical', resolved=False).count()
+        pending_alerts = FatigueAlert.objects.filter(is_resolved=False).count()
+        critical_alerts = FatigueAlert.objects.filter(severity='critical', is_resolved=False).count()
         alerts_today = FatigueAlert.objects.filter(created_at__date=today).count()
         
         # Recomendaciones
@@ -63,12 +202,12 @@ class DashboardViewSet(viewsets.ViewSet):
         
         # Métricas promedio (últimas 24 horas)
         last_24h = timezone.now() - timedelta(hours=24)
-        recent_metrics = ProcessedMetrics.objects.filter(timestamp__gte=last_24h)
+        recent_metrics = ProcessedMetrics.objects.filter(window_start__gte=last_24h)
         
         metrics_agg = recent_metrics.aggregate(
             avg_fatigue=Avg('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            avg_hr=Avg('heart_rate_avg')
+            avg_hr=Avg('hr_avg')
         )
         
         # Datos de sensores
@@ -108,7 +247,7 @@ class DashboardViewSet(viewsets.ViewSet):
         
         # Métricas más recientes por empleado
         recent_metrics = ProcessedMetrics.objects.filter(
-            timestamp__gte=last_5_min
+            window_start__gte=last_5_min
         ).select_related('employee', 'device')
         
         # Empleados activos (con lecturas recientes)
@@ -123,7 +262,7 @@ class DashboardViewSet(viewsets.ViewSet):
         
         # Top 5 empleados en riesgo
         high_risk = ProcessedMetrics.objects.filter(
-            timestamp__gte=now - timedelta(hours=1)
+            window_start__gte=now - timedelta(hours=1)
         ).values(
             'employee__id',
             'employee__first_name',
@@ -132,7 +271,7 @@ class DashboardViewSet(viewsets.ViewSet):
         ).annotate(
             avg_fatigue=Avg('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            latest_reading=Max('timestamp')
+            latest_reading=Max('window_start')
         ).filter(
             avg_fatigue__gte=60
         ).order_by('-avg_fatigue')[:5]
@@ -190,17 +329,20 @@ class DashboardViewSet(viewsets.ViewSet):
             'id': employee.id,
             'name': f"{employee.first_name} {employee.last_name}",
             'email': employee.email,
-            'phone': employee.phone_number,
+            'phone': getattr(employee, 'phone', None) or getattr(employee, 'phone_number', None),
         }
         
         # Obtener dispositivo del empleado
+        device = None
+        device_status = 'no_device'
+        device_battery = 0
+        
         try:
             device = Device.objects.get(employee=employee)
+            device_status = device.status
+            device_battery = device.battery_level
         except Device.DoesNotExist:
-            return Response(
-                {'error': 'No hay dispositivo asignado a este empleado'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            logger.warning(f"No device found for employee {employee.id}")
         
         # Métricas personales
         now = timezone.now()
@@ -209,21 +351,21 @@ class DashboardViewSet(viewsets.ViewSet):
         # Métrica más reciente
         latest_metric = ProcessedMetrics.objects.filter(
             employee=employee
-        ).order_by('-timestamp').first()
+        ).order_by('-window_start').first()
         
         # Promedios de 7 días
         metrics_7d = ProcessedMetrics.objects.filter(
             employee=employee,
-            timestamp__gte=last_7_days
+            window_start__gte=last_7_days
         ).aggregate(
             avg_fatigue=Avg('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            avg_hr=Avg('heart_rate_avg')
+            avg_hr=Avg('hr_avg')
         )
         
         # Alertas
         total_alerts = FatigueAlert.objects.filter(employee=employee).count()
-        pending_alerts = FatigueAlert.objects.filter(employee=employee, resolved=False).count()
+        pending_alerts = FatigueAlert.objects.filter(employee=employee, is_resolved=False).count()
         alerts_this_week = FatigueAlert.objects.filter(
             employee=employee,
             created_at__gte=now - timedelta(days=7)
@@ -235,30 +377,30 @@ class DashboardViewSet(viewsets.ViewSet):
             'employee_email': employee.email,
             'current_fatigue_index': round(latest_metric.fatigue_index, 2) if latest_metric else None,
             'current_spo2': round(latest_metric.spo2_avg, 2) if latest_metric else None,
-            'current_heart_rate': round(latest_metric.heart_rate_avg, 2) if latest_metric else None,
-            'last_reading': latest_metric.timestamp if latest_metric else None,
+            'current_heart_rate': round(latest_metric.hr_avg, 2) if latest_metric else None,
+            'last_reading': latest_metric.window_start if latest_metric else None,
             'avg_fatigue_7d': round(metrics_7d['avg_fatigue'] or 0, 2),
             'avg_spo2_7d': round(metrics_7d['avg_spo2'] or 0, 2),
             'avg_heart_rate_7d': round(metrics_7d['avg_hr'] or 0, 2),
             'total_alerts': total_alerts,
             'pending_alerts': pending_alerts,
             'alerts_this_week': alerts_this_week,
-            'device_status': device.status,
-            'device_battery': device.battery_level,
+            'device_status': device_status,
+            'device_battery': device_battery,
         }
         
         # Historial de fatiga (últimos 7 días por día)
         fatigue_history = ProcessedMetrics.objects.filter(
             employee=employee,
-            timestamp__gte=last_7_days
+            window_start__gte=last_7_days
         ).annotate(
-            date=TruncDate('timestamp')
+            date=TruncDate('window_start')
         ).values('date').annotate(
             avg_fatigue_index=Avg('fatigue_index'),
             max_fatigue_index=Max('fatigue_index'),
             min_fatigue_index=Min('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            avg_heart_rate=Avg('heart_rate_avg'),
+            avg_heart_rate=Avg('hr_avg'),
             total_readings=Count('id')
         ).order_by('date')
         
@@ -296,11 +438,11 @@ class DashboardViewSet(viewsets.ViewSet):
         if employee.supervisor:
             team_metrics = ProcessedMetrics.objects.filter(
                 employee__supervisor=employee.supervisor,
-                timestamp__gte=last_7_days
+                window_start__gte=last_7_days
             ).aggregate(
                 team_avg_fatigue=Avg('fatigue_index'),
                 team_avg_spo2=Avg('spo2_avg'),
-                team_avg_hr=Avg('heart_rate_avg')
+                team_avg_hr=Avg('hr_avg')
             )
             
             vs_team_average = {
@@ -319,13 +461,13 @@ class DashboardViewSet(viewsets.ViewSet):
         
         current_week_avg = ProcessedMetrics.objects.filter(
             employee=employee,
-            timestamp__gte=week_ago
+            window_start__gte=week_ago
         ).aggregate(avg=Avg('fatigue_index'))['avg'] or 0
         
         previous_week_avg = ProcessedMetrics.objects.filter(
             employee=employee,
-            timestamp__gte=last_week,
-            timestamp__lt=week_ago
+            window_start__gte=last_week,
+            window_start__lt=week_ago
         ).aggregate(avg=Avg('fatigue_index'))['avg'] or 0
         
         improvement = previous_week_avg - current_week_avg if previous_week_avg else 0
@@ -373,28 +515,28 @@ class DashboardViewSet(viewsets.ViewSet):
         # Alertas del equipo
         now = timezone.now()
         team_alerts = FatigueAlert.objects.filter(supervisor=supervisor).count()
-        team_pending_alerts = FatigueAlert.objects.filter(supervisor=supervisor, resolved=False).count()
+        team_pending_alerts = FatigueAlert.objects.filter(supervisor=supervisor, is_resolved=False).count()
         team_critical_alerts = FatigueAlert.objects.filter(
             supervisor=supervisor, 
             severity='critical', 
-            resolved=False
+            is_resolved=False
         ).count()
         
         # Promedios del equipo (últimos 7 días)
         last_7_days = now - timedelta(days=7)
         team_metrics = ProcessedMetrics.objects.filter(
             employee__in=team_employees,
-            timestamp__gte=last_7_days
+            window_start__gte=last_7_days
         ).aggregate(
             avg_fatigue=Avg('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            avg_hr=Avg('heart_rate_avg')
+            avg_hr=Avg('hr_avg')
         )
         
         # Empleado con mayor riesgo
         high_risk_employee = ProcessedMetrics.objects.filter(
             employee__in=team_employees,
-            timestamp__gte=now - timedelta(hours=24)
+            window_start__gte=now - timedelta(hours=24)
         ).values(
             'employee__id',
             'employee__first_name',
@@ -417,13 +559,13 @@ class DashboardViewSet(viewsets.ViewSet):
         
         current_week_fatigue = ProcessedMetrics.objects.filter(
             employee__in=team_employees,
-            timestamp__gte=week_ago
+            window_start__gte=week_ago
         ).aggregate(avg=Avg('fatigue_index'))['avg'] or 0
         
         previous_week_fatigue = ProcessedMetrics.objects.filter(
             employee__in=team_employees,
-            timestamp__gte=last_14_days,
-            timestamp__lt=week_ago
+            window_start__gte=last_14_days,
+            window_start__lt=week_ago
         ).aggregate(avg=Avg('fatigue_index'))['avg'] or 0
         
         fatigue_trend = 'stable'
@@ -469,19 +611,19 @@ class DashboardViewSet(viewsets.ViewSet):
         # Lista de empleados con métricas
         employees_data = []
         for emp in team_employees:
-            latest_metric = ProcessedMetrics.objects.filter(employee=emp).order_by('-timestamp').first()
+            latest_metric = ProcessedMetrics.objects.filter(employee=emp).order_by('-window_start').first()
             
             metrics_7d = ProcessedMetrics.objects.filter(
                 employee=emp,
-                timestamp__gte=last_7_days
+                window_start__gte=last_7_days
             ).aggregate(
                 avg_fatigue=Avg('fatigue_index'),
                 avg_spo2=Avg('spo2_avg'),
-                avg_hr=Avg('heart_rate_avg')
+                avg_hr=Avg('hr_avg')
             )
             
             emp_alerts = FatigueAlert.objects.filter(employee=emp).count()
-            emp_pending = FatigueAlert.objects.filter(employee=emp, resolved=False).count()
+            emp_pending = FatigueAlert.objects.filter(employee=emp, is_resolved=False).count()
             emp_week_alerts = FatigueAlert.objects.filter(
                 employee=emp,
                 created_at__gte=week_ago
@@ -501,8 +643,8 @@ class DashboardViewSet(viewsets.ViewSet):
                 'employee_email': emp.email,
                 'current_fatigue_index': round(latest_metric.fatigue_index, 2) if latest_metric else None,
                 'current_spo2': round(latest_metric.spo2_avg, 2) if latest_metric else None,
-                'current_heart_rate': round(latest_metric.heart_rate_avg, 2) if latest_metric else None,
-                'last_reading': latest_metric.timestamp if latest_metric else None,
+                'current_heart_rate': round(latest_metric.hr_avg, 2) if latest_metric else None,
+                'last_reading': latest_metric.window_start if latest_metric else None,
                 'avg_fatigue_7d': round(metrics_7d['avg_fatigue'] or 0, 2),
                 'avg_spo2_7d': round(metrics_7d['avg_spo2'] or 0, 2),
                 'avg_heart_rate_7d': round(metrics_7d['avg_hr'] or 0, 2),
@@ -593,7 +735,7 @@ class DashboardViewSet(viewsets.ViewSet):
         
         high_risk_employees_data = []
         high_risk_metrics = ProcessedMetrics.objects.filter(
-            timestamp__gte=last_24h
+            window_start__gte=last_24h
         ).values(
             'employee__id',
             'employee__first_name',
@@ -602,8 +744,8 @@ class DashboardViewSet(viewsets.ViewSet):
         ).annotate(
             avg_fatigue=Avg('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            avg_hr=Avg('heart_rate_avg'),
-            latest=Max('timestamp')
+            avg_hr=Avg('hr_avg'),
+            latest=Max('window_start')
         ).filter(
             avg_fatigue__gte=60
         ).order_by('-avg_fatigue')[:10]
@@ -612,7 +754,7 @@ class DashboardViewSet(viewsets.ViewSet):
             # Obtener alertas y dispositivo
             employee_id = item['employee__id']
             alerts = FatigueAlert.objects.filter(employee_id=employee_id).count()
-            pending = FatigueAlert.objects.filter(employee_id=employee_id, resolved=False).count()
+            pending = FatigueAlert.objects.filter(employee_id=employee_id, is_resolved=False).count()
             week_alerts = FatigueAlert.objects.filter(
                 employee_id=employee_id,
                 created_at__gte=now - timedelta(days=7)
@@ -665,15 +807,15 @@ class DashboardViewSet(viewsets.ViewSet):
         # Tendencia de fatiga (últimos 7 días)
         last_7_days = now - timedelta(days=7)
         fatigue_trend_data = ProcessedMetrics.objects.filter(
-            timestamp__gte=last_7_days
+            window_start__gte=last_7_days
         ).annotate(
-            date=TruncDate('timestamp')
+            date=TruncDate('window_start')
         ).values('date').annotate(
             avg_fatigue_index=Avg('fatigue_index'),
             max_fatigue_index=Max('fatigue_index'),
             min_fatigue_index=Min('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            avg_heart_rate=Avg('heart_rate_avg'),
+            avg_heart_rate=Avg('hr_avg'),
             total_readings=Count('id'),
             employees_monitored=Count('employee', distinct=True)
         ).order_by('date')
@@ -745,3 +887,4 @@ class DashboardViewSet(viewsets.ViewSet):
         
         serializer = DashboardSummarySerializer(summary_data)
         return Response(serializer.data)
+

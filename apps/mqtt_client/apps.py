@@ -14,13 +14,19 @@ class MqttClientConfig(AppConfig):
         Inicia el cliente MQTT automáticamente.
         """
         # Solo iniciar en el proceso principal (no en workers de recarga)
+        import os
         import sys
-        if 'runserver' not in sys.argv:
+        
+        # Evitar que se ejecute en el proceso de recarga automática
+        if os.environ.get('RUN_MAIN') != 'true':
             return
             
-        try:
-            from .client import mqtt_client
-            logger.info("🚀 Iniciando cliente MQTT desde AppConfig...")
-            mqtt_client.start()
-        except Exception as e:
-            logger.error(f"❌ Error al iniciar MQTT en AppConfig: {e}")
+        # Solo iniciar si estamos ejecutando el servidor
+        if 'runserver' in sys.argv or 'gunicorn' in sys.argv[0]:
+            try:
+                from .client import mqtt_client
+                logger.info("🚀 Iniciando cliente MQTT desde AppConfig...")
+                mqtt_client.start()
+                logger.info("✅ Cliente MQTT iniciado correctamente")
+            except Exception as e:
+                logger.error(f"❌ Error al iniciar MQTT en AppConfig: {e}", exc_info=True)

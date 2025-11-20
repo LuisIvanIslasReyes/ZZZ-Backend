@@ -14,6 +14,7 @@ class DeviceListSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source='employee.get_full_name', read_only=True)
     employee_email = serializers.EmailField(source='employee.email', read_only=True)
     supervisor_name = serializers.CharField(source='supervisor.get_full_name', read_only=True)
+    company_name = serializers.CharField(source='company.name', read_only=True)
     
     class Meta:
         model = Device
@@ -25,6 +26,8 @@ class DeviceListSerializer(serializers.ModelSerializer):
             'employee_email',
             'supervisor',
             'supervisor_name',
+            'company',
+            'company_name',
             'is_active',
             'last_connection',
             'created_at',
@@ -41,6 +44,7 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
     employee_role = serializers.CharField(source='employee.get_role_display', read_only=True)
     supervisor_name = serializers.CharField(source='supervisor.get_full_name', read_only=True)
     supervisor_email = serializers.EmailField(source='supervisor.email', read_only=True)
+    company_name = serializers.CharField(source='company.name', read_only=True)
     
     # Estadísticas adicionales
     total_sensor_data = serializers.SerializerMethodField()
@@ -59,6 +63,8 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
             'supervisor',
             'supervisor_name',
             'supervisor_email',
+            'company',
+            'company_name',
             'is_active',
             'last_connection',
             'created_at',
@@ -93,7 +99,8 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
 class DeviceCreateSerializer(serializers.ModelSerializer):
     """
     Serializer para crear dispositivos.
-    Valida que el empleado y supervisor sean válidos.
+    Valida que el empleado sea válido.
+    El supervisor se asigna automáticamente desde el empleado.
     """
     
     class Meta:
@@ -101,7 +108,6 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         fields = [
             'device_identifier',
             'employee',
-            'supervisor',
             'is_active',
         ]
     
@@ -114,34 +120,26 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate_employee(self, value):
-        """Validar que el usuario sea un empleado."""
+        """Validar que el usuario sea un empleado y tenga supervisor."""
         if value.role != 'employee':
             raise serializers.ValidationError(
                 "El usuario debe tener rol de 'Empleado'"
             )
-        return value
-    
-    def validate_supervisor(self, value):
-        """Validar que el usuario sea un supervisor."""
-        if value.role != 'supervisor':
+        
+        # Verificar que el empleado tenga un supervisor asignado
+        if not value.supervisor:
             raise serializers.ValidationError(
-                "El usuario debe tener rol de 'Supervisor'"
+                f"El empleado '{value.get_full_name()}' no tiene un supervisor asignado. "
+                "Debe asignarle un supervisor antes de crear un dispositivo."
             )
+        
+        # Verificar que el empleado no tenga ya un dispositivo asignado
+        if hasattr(value, 'device') and value.device:
+            raise serializers.ValidationError(
+                f"El empleado '{value.get_full_name()}' ya tiene un dispositivo asignado"
+            )
+        
         return value
-    
-    def validate(self, data):
-        """Validar que el empleado pertenezca al supervisor."""
-        employee = data.get('employee')
-        supervisor = data.get('supervisor')
-        
-        if employee and supervisor:
-            if employee.supervisor != supervisor:
-                raise serializers.ValidationError(
-                    f"El empleado '{employee.get_full_name()}' no pertenece al "
-                    f"supervisor '{supervisor.get_full_name()}'"
-                )
-        
-        return data
 
 
 class DeviceUpdateSerializer(serializers.ModelSerializer):

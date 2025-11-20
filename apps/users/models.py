@@ -43,13 +43,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     Modelo de usuario personalizado con roles y jerarquía.
     
     Roles:
-    - admin: Administrador del sistema
-    - supervisor: Supervisor de empleados
-    - employee: Empleado que usa el wearable
+    - admin: Equipo de desarrollo, gestiona empresas (clientes)
+    - supervisor: Cuenta de empresa, gestiona empleados de su empresa
+    - employee: Empleado que usa el wearable, pertenece a una empresa
     
     Jerarquía:
-    Admin (1) → Supervisores (N)
-    Supervisor (1) → Empleados (N)
+    Admin (equipo dev) → Companies (N)
+    Company (1) → Supervisors (N) → Employees (N)
     """
     
     ROLE_CHOICES = [
@@ -67,12 +67,28 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField('Nombre', max_length=100)
     last_name = models.CharField('Apellido', max_length=100)
     
+    # Información adicional del empleado
+    phone = models.CharField('Teléfono', max_length=20, blank=True, null=True)
+    department = models.CharField('Departamento', max_length=100, blank=True, null=True)
+    position = models.CharField('Puesto', max_length=100, blank=True, null=True)
+    
     # Rol del usuario
     role = models.CharField(
         'Rol',
         max_length=20,
         choices=ROLE_CHOICES,
         default='employee'
+    )
+    
+    # Relación con empresa (para supervisores y empleados)
+    company = models.ForeignKey(
+        'companies.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='users',
+        verbose_name='Empresa',
+        help_text='Empresa a la que pertenece (supervisores y empleados)'
     )
     
     # Relaciones jerárquicas
@@ -85,17 +101,6 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         limit_choices_to={'role': 'supervisor'},
         verbose_name='Supervisor',
         help_text='Supervisor asignado (solo para empleados)'
-    )
-    
-    admin = models.ForeignKey(
-        'self',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='supervisors',
-        limit_choices_to={'role': 'admin'},
-        verbose_name='Administrador',
-        help_text='Administrador asignado (solo para supervisores)'
     )
     
     # Campos de estado
@@ -176,18 +181,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         Override del método save para validaciones adicionales.
         """
         # Validar jerarquía
-        if self.role == 'employee' and self.admin:
-            # Los empleados no deben tener admin asignado
-            self.admin = None
-        
         if self.role == 'supervisor' and self.supervisor:
             # Los supervisores no deben tener supervisor asignado
             self.supervisor = None
         
-        if self.role == 'admin' and (self.supervisor or self.admin):
-            # Los admins no deben tener supervisor ni admin asignado
+        if self.role == 'admin' and self.supervisor:
+            # Los admins no deben tener supervisor asignado
             self.supervisor = None
-            self.admin = None
         
         # Si es admin o supervisor, marcar como staff
         if self.role in ['admin', 'supervisor']:

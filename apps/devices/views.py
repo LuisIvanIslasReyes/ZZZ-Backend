@@ -48,6 +48,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
     search_fields = ['device_id', 'name', 'employee__first_name', 'employee__last_name', 'employee__email']
     ordering_fields = ['created_at', 'last_connection', 'status', 'battery_level']
     ordering = ['-created_at']
+    pagination_class = None  # Deshabilitar paginación
     
     def get_serializer_class(self):
         """Seleccionar serializer según la acción."""
@@ -64,17 +65,17 @@ class DeviceViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """
-        Filtrar dispositivos según el rol del usuario.
+        Filtrar dispositivos según el rol del usuario y la empresa.
         """
         user = self.request.user
         queryset = self.queryset
         
         if user.role == 'admin':
-            # Admin ve todos los dispositivos
+            # Admin ve todos los dispositivos de todas las empresas
             pass
         elif user.role == 'supervisor':
-            # Supervisor ve dispositivos de sus empleados
-            queryset = queryset.filter(supervisor=user)
+            # Supervisor ve dispositivos de empleados de su empresa
+            queryset = queryset.filter(company=user.company)
         else:  # employee
             # Empleado solo ve su propio dispositivo
             queryset = queryset.filter(employee=user)
@@ -87,6 +88,10 @@ class DeviceViewSet(viewsets.ModelViewSet):
         is_active = self.request.query_params.get('is_active')
         if is_active is not None:
             queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        
+        company_id = self.request.query_params.get('company')
+        if company_id and user.role == 'admin':
+            queryset = queryset.filter(company_id=company_id)
         
         employee_id = self.request.query_params.get('employee')
         if employee_id and user.role in ['admin', 'supervisor']:
@@ -114,15 +119,34 @@ class DeviceViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """
-        Crear dispositivo y asignar supervisor si es necesario.
+        Crear dispositivo y asignar supervisor y empresa automáticamente.
+        El dispositivo hereda la empresa del supervisor/empleado.
         """
+        employee = serializer.validated_data.get('employee')
         user = self.request.user
         
-        # Si el usuario es supervisor, asignarlo automáticamente
+        # Determinar empresa y supervisor
         if user.role == 'supervisor':
-            serializer.save(supervisor=user)
+            # Supervisor crea dispositivo para empleado de su empresa
+            if employee.company != user.company:
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("No puedes asignar dispositivos a empleados de otra empresa")
+            serializer.save(
+                supervisor=user,
+                company=user.company
+            )
+        elif user.role == 'admin':
+            # Admin debe especificar o usa la empresa del empleado
+            if employee:
+                serializer.save(
+                    supervisor=employee.supervisor,
+                    company=employee.company
+                )
+            else:
+                serializer.save()
         else:
-            serializer.save()
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("No tienes permisos para crear dispositivos")
     
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):
