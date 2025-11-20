@@ -1,0 +1,117 @@
+[
+  {
+    "test": "Servidor Backend Activo",
+    "success": true,
+    "status_code": 200,
+    "timestamp": "2025-11-14 17:56:06",
+    "response_data": null,
+    "error": null
+  },
+  {
+    "test": "Autenticación de Usuario",
+    "success": true,
+    "status_code": 200,
+    "timestamp": "2025-11-14 17:56:08",
+    "response_data": {
+      "token_received": true
+    },
+    "error": null
+  },
+  {
+    "test": "Configuración CORS (Frontend puede conectar)",
+    "success": true,
+    "status_code": 200,
+    "timestamp": "2025-11-14 17:56:10",
+    "response_data": null,
+    "error": null
+  },
+  {
+    "test": "Lista de Dispositivos",
+    "success": true,
+    "status_code": 200,
+    "timestamp": "2025-11-14 17:56:13",
+    "response_data": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    },
+    "error": null
+  },
+  {
+    "test": "Lista de Datos de Sensores",
+    "success": true,
+    "status_code": 200,
+    "timestamp": "2025-11-14 17:56:15",
+    "response_data": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    },
+    "error": null
+  },
+  {
+    "test": "Lista de Métricas Procesadas",
+    "success": true,
+    "status_code": 200,
+    "timestamp": "2025-11-14 17:56:18",
+    "response_data": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    },
+    "error": null
+  },
+  {
+    "test": "Lista de Alertas",
+    "success": true,
+    "status_code": 200,
+    "timestamp": "2025-11-14 17:56:21",
+    "response_data": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    },
+    "error": null
+  },
+  {
+    "test": "Lista de Recomendaciones",
+    "success": true,
+    "status_code": 200,
+    "timestamp": "2025-11-14 17:56:23",
+    "response_data": {
+      "count": 0,
+      "next": null,
+      "previous": null,
+      "results": []
+    },
+    "error": null
+  },
+  {
+    "test": "Dashboard Principal",
+    "success": false,
+    "status_code": 404,
+    "timestamp": "2025-11-14 17:56:26",
+    "response_data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">\n  <title>Page not found at /api/dashboard/</title>\n  <meta name=\"robots\" content=\"NONE,NOA",
+    "error": null
+  },
+  {
+    "test": "Visualizaciones",
+    "success": false,
+    "status_code": 404,
+    "timestamp": "2025-11-14 17:56:29",
+    "response_data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">\n  <title>Page not found at /api/visualizations/</title>\n  <meta name=\"robots\" content=\"NON",
+    "error": null
+  },
+  {
+    "test": "Reportes",
+    "success": false,
+    "status_code": 404,
+    "timestamp": "2025-11-14 17:56:31",
+    "response_data": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">\n  <title>Page not found at /api/reports/</title>\n  <meta name=\"robots\" content=\"NONE,NOARC",
+    "error": null
+  }
+]
