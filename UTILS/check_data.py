@@ -2,7 +2,12 @@
 Script para verificar usuarios y dispositivos en la BD
 """
 import os
+import sys
 import django
+
+# Añadir el directorio raíz del proyecto al path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 django.setup()
