@@ -45,8 +45,8 @@ class DeviceViewSet(viewsets.ModelViewSet):
     queryset = Device.objects.select_related('employee', 'supervisor').all()
     permission_classes = [IsAuthenticated]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['device_id', 'name', 'employee__first_name', 'employee__last_name', 'employee__email']
-    ordering_fields = ['created_at', 'last_connection', 'status', 'battery_level']
+    search_fields = ['device_identifier', 'employee__first_name', 'employee__last_name', 'employee__email']
+    ordering_fields = ['created_at', 'last_connection']
     ordering = ['-created_at']
     pagination_class = None  # Deshabilitar paginación
     
@@ -122,31 +122,64 @@ class DeviceViewSet(viewsets.ModelViewSet):
         Crear dispositivo y asignar supervisor y empresa automáticamente.
         El dispositivo hereda la empresa del supervisor/empleado.
         """
-        employee = serializer.validated_data.get('employee')
-        user = self.request.user
+        from rest_framework.exceptions import ValidationError, PermissionDenied
+        import logging
         
-        # Determinar empresa y supervisor
-        if user.role == 'supervisor':
-            # Supervisor crea dispositivo para empleado de su empresa
-            if employee.company != user.company:
-                from rest_framework.exceptions import ValidationError
-                raise ValidationError("No puedes asignar dispositivos a empleados de otra empresa")
-            serializer.save(
-                supervisor=user,
-                company=user.company
-            )
-        elif user.role == 'admin':
-            # Admin debe especificar o usa la empresa del empleado
-            if employee:
+        logger = logging.getLogger(__name__)
+        
+        try:
+            employee = serializer.validated_data.get('employee')
+            user = self.request.user
+            
+            logger.info(f"Usuario {user.email} (rol: {user.role}) intenta crear dispositivo para empleado ID: {employee.id if employee else 'None'}")
+            
+            # Validar que el empleado exista
+            if not employee:
+                raise ValidationError({"employee": "Debe especificar un empleado"})
+            
+            # Determinar empresa y supervisor
+            if user.role == 'supervisor':
+                # Supervisor crea dispositivo para empleado de su empresa
+                if not employee.company:
+                    raise ValidationError({"employee": "El empleado debe pertenecer a una empresa"})
+                if employee.company != user.company:
+                    raise ValidationError({"employee": "No puedes asignar dispositivos a empleados de otra empresa"})
+                
+                logger.info(f"Supervisor {user.email} creando dispositivo para {employee.email}")
+                serializer.save(
+                    supervisor=user,
+                    company=user.company
+                )
+                
+            elif user.role == 'admin':
+                # Admin puede crear para cualquier empleado
+                # Usar el supervisor del empleado o requerir que tenga uno
+                if not employee.supervisor:
+                    raise ValidationError({
+                        "employee": f"El empleado '{employee.get_full_name()}' no tiene un supervisor asignado. "
+                        "Debe asignarle un supervisor antes de crear un dispositivo."
+                    })
+                
+                if not employee.company:
+                    raise ValidationError({
+                        "employee": f"El empleado '{employee.get_full_name()}' no pertenece a ninguna empresa"
+                    })
+                
+                logger.info(f"Admin {user.email} creando dispositivo para {employee.email}")
                 serializer.save(
                     supervisor=employee.supervisor,
                     company=employee.company
                 )
             else:
-                serializer.save()
-        else:
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("No tienes permisos para crear dispositivos")
+                raise PermissionDenied("No tienes permisos para crear dispositivos")
+                
+            logger.info(f"Dispositivo {serializer.instance.device_identifier} creado exitosamente")
+            
+        except (ValidationError, PermissionDenied):
+            raise
+        except Exception as e:
+            logger.error(f"Error inesperado al crear dispositivo: {str(e)}", exc_info=True)
+            raise ValidationError({"detail": f"Error al crear dispositivo: {str(e)}"})
     
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):
@@ -155,12 +188,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
         """
         device = self.get_object()
         device.is_active = True
-        device.status = 'idle'
         device.save()
         
         serializer = self.get_serializer(device)
         return Response({
-            'message': f'Dispositivo {device.device_id} activado exitosamente',
+            'message': f'Dispositivo {device.device_identifier} activado exitosamente',
             'device': serializer.data
         })
     
@@ -171,12 +203,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
         """
         device = self.get_object()
         device.is_active = False
-        device.status = 'idle'
         device.save()
         
         serializer = self.get_serializer(device)
         return Response({
-            'message': f'Dispositivo {device.device_id} desactivado exitosamente',
+            'message': f'Dispositivo {device.device_identifier} desactivado exitosamente',
             'device': serializer.data
         })
     
@@ -236,7 +267,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
         ).count()
         
         return Response({
-            'device_id': device.device_id,
+            'device_id': device.device_identifier,
             'period_days': days,
             'sensor_data': sensor_stats,
             'processed_metrics': metrics_stats,

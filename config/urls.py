@@ -24,6 +24,7 @@ from apps.analytics.views import FatigueAlertViewSet, RoutineRecommendationViewS
 from apps.analytics.dashboard_views import DashboardViewSet
 from apps.analytics.visualization_views import VisualizationViewSet
 from apps.analytics.report_views import ReportViewSet
+from apps.analytics.reports_views import ReportsViewSet
 from apps.users.admin_views import AdminViewSet
 from apps.users.views import EmployeeListCreateView, EmployeeDetailView
 
@@ -36,7 +37,7 @@ router.register(r'alerts', FatigueAlertViewSet, basename='fatiguealert')
 router.register(r'recommendations', RoutineRecommendationViewSet, basename='routinerecommendation')
 router.register(r'dashboard', DashboardViewSet, basename='dashboard')
 router.register(r'visualizations', VisualizationViewSet, basename='visualization')
-router.register(r'reports', ReportViewSet, basename='report')
+router.register(r'reports', ReportsViewSet, basename='reports')
 router.register(r'admin', AdminViewSet, basename='admin')
 
 urlpatterns = [

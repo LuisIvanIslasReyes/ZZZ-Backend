@@ -120,23 +120,17 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate_employee(self, value):
-        """Validar que el usuario sea un empleado y tenga supervisor."""
+        """Validar que el usuario sea un empleado."""
         if value.role != 'employee':
             raise serializers.ValidationError(
                 "El usuario debe tener rol de 'Empleado'"
             )
         
-        # Verificar que el empleado tenga un supervisor asignado
-        if not value.supervisor:
-            raise serializers.ValidationError(
-                f"El empleado '{value.get_full_name()}' no tiene un supervisor asignado. "
-                "Debe asignarle un supervisor antes de crear un dispositivo."
-            )
-        
         # Verificar que el empleado no tenga ya un dispositivo asignado
-        if hasattr(value, 'device') and value.device:
+        existing_device = Device.objects.filter(employee=value).first()
+        if existing_device:
             raise serializers.ValidationError(
-                f"El empleado '{value.get_full_name()}' ya tiene un dispositivo asignado"
+                f"El empleado '{value.get_full_name()}' ya tiene un dispositivo asignado ({existing_device.device_identifier})"
             )
         
         return value
@@ -165,10 +159,10 @@ class DeviceUpdateSerializer(serializers.ModelSerializer):
         return value
     
     def validate_supervisor(self, value):
-        """Validar que el usuario sea un supervisor."""
-        if value and value.role != 'supervisor':
+        """Validar que el usuario sea un supervisor o admin."""
+        if value and value.role not in ['supervisor', 'admin']:
             raise serializers.ValidationError(
-                "El usuario debe tener rol de 'Supervisor'"
+                "El usuario debe tener rol de 'Supervisor' o 'Admin'"
             )
         return value
     

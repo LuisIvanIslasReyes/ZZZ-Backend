@@ -77,7 +77,7 @@ class VisualizationViewSet(viewsets.ViewSet):
         
         # Filtrar métricas
         metrics_qs = self._get_queryset_for_user(request.user).filter(
-            timestamp__gte=start_date
+            window_start__gte=start_date
         )
         
         # Filtro adicional por empleado si se especifica
@@ -87,26 +87,26 @@ class VisualizationViewSet(viewsets.ViewSet):
         # Agrupar por intervalo
         if interval == 'hour':
             trends = metrics_qs.annotate(
-                date=TruncDate('timestamp'),
-                hour=ExtractHour('timestamp')
+                date=TruncDate('window_start'),
+                hour=ExtractHour('window_start')
             ).values('date', 'hour').annotate(
                 avg_fatigue_index=Avg('fatigue_index'),
                 max_fatigue_index=Max('fatigue_index'),
                 min_fatigue_index=Min('fatigue_index'),
                 avg_spo2=Avg('spo2_avg'),
-                avg_heart_rate=Avg('heart_rate_avg'),
+                avg_heart_rate=Avg('hr_avg'),
                 total_readings=Count('id'),
                 employees_monitored=Count('employee', distinct=True)
             ).order_by('date', 'hour')
         else:  # day
             trends = metrics_qs.annotate(
-                date=TruncDate('timestamp')
+                date=TruncDate('window_start')
             ).values('date').annotate(
                 avg_fatigue_index=Avg('fatigue_index'),
                 max_fatigue_index=Max('fatigue_index'),
                 min_fatigue_index=Min('fatigue_index'),
                 avg_spo2=Avg('spo2_avg'),
-                avg_heart_rate=Avg('heart_rate_avg'),
+                avg_heart_rate=Avg('hr_avg'),
                 total_readings=Count('id'),
                 employees_monitored=Count('employee', distinct=True)
             ).order_by('date')
@@ -159,16 +159,16 @@ class VisualizationViewSet(viewsets.ViewSet):
         start_date = now - timedelta(days=days)
         
         metrics_qs = self._get_queryset_for_user(request.user).filter(
-            timestamp__gte=start_date
+            window_start__gte=start_date
         )
         
         # Agrupar por hora
         hourly_data = metrics_qs.annotate(
-            hour=ExtractHour('timestamp')
+            hour=ExtractHour('window_start')
         ).values('hour').annotate(
             avg_fatigue=Avg('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            avg_heart_rate=Avg('heart_rate_avg'),
+            avg_heart_rate=Avg('hr_avg'),
             total_readings=Count('id')
         ).order_by('hour')
         
@@ -215,16 +215,16 @@ class VisualizationViewSet(viewsets.ViewSet):
         start_date = now - timedelta(days=days)
         
         metrics_qs = self._get_queryset_for_user(request.user).filter(
-            timestamp__gte=start_date
+            window_start__gte=start_date
         )
         
         # Agrupar por día de la semana
         weekly_data = metrics_qs.annotate(
-            day_of_week=ExtractWeekDay('timestamp')
+            day_of_week=ExtractWeekDay('window_start')
         ).values('day_of_week').annotate(
             avg_fatigue=Avg('fatigue_index'),
             avg_spo2=Avg('spo2_avg'),
-            avg_heart_rate=Avg('heart_rate_avg'),
+            avg_heart_rate=Avg('hr_avg'),
             total_readings=Count('id')
         ).order_by('day_of_week')
         
@@ -284,7 +284,7 @@ class VisualizationViewSet(viewsets.ViewSet):
         start_date = now - timedelta(days=days)
         
         metrics_qs = self._get_queryset_for_user(request.user).filter(
-            timestamp__gte=start_date
+            window_start__gte=start_date
         )
         
         total = metrics_qs.count()

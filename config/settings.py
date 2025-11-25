@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'drf_spectacular',  # OpenAPI/Swagger
+    'django_apscheduler',  # Scheduler para tareas automáticas
     
     # Local apps
     'apps.companies',  # Nueva app para empresas

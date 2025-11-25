@@ -32,7 +32,7 @@ Get-Service -Name postgresql*
 
 ## 🎯 INICIO RÁPIDO - 3 TERMINALES
 
-### **TERMINAL 1: Django Backend + MQTT Client**
+### **TERMINAL 1: Django Backend + MQTT Client + Auto-Processor**
 
 ```powershell
 cd C:\Users\bauti\Downloads\respaldos\ZZZ-Backend
@@ -43,14 +43,20 @@ python manage.py runserver
 **¿Qué hace?**
 - Inicia el servidor Django en http://127.0.0.1:8000/
 - Conecta automáticamente el cliente MQTT
+- **Inicia el procesador automático de métricas cada 2 minutos** 🆕
 - Espera datos de sensores
 
 **Mensajes esperados:**
 ```
 ✅ Conectado al broker MQTT
 📡 Suscrito a topic: devices/+/sensors
+✅ Scheduler de procesamiento automático activado
+📋 Job programado: Procesar métricas cada 2 minutos
 Starting development server at http://127.0.0.1:8000/
 ```
+
+**IMPORTANTE:** Ya NO necesitas ejecutar `python manage.py process_metrics` manualmente.
+El sistema procesa automáticamente los datos cada 2 minutos. 🎉
 
 ---
 
@@ -111,6 +117,44 @@ python UTILS\diagnose_mqtt.py
 
 ---
 
+## 📊 PROCESAR MÉTRICAS PARA GRÁFICAS
+
+**IMPORTANTE:** Para que aparezcan las gráficas en el frontend, debes procesar los datos crudos de sensores:
+
+```powershell
+cd C:\Users\bauti\Downloads\respaldos\ZZZ-Backend
+.\venv\Scripts\Activate.ps1
+python manage.py process_metrics --hours-back=24
+```
+
+**¿Qué hace esto?**
+- Toma los datos crudos de `SensorData` (cada 5 segundos)
+- Los procesa en ventanas de 1 minuto
+- Calcula métricas avanzadas: HRV, índice de fatiga, etc.
+- Genera registros en `ProcessedMetrics` que alimentan las gráficas
+
+**Opciones disponibles:**
+```powershell
+# Procesar últimas 24 horas (recomendado)
+python manage.py process_metrics --hours-back=24
+
+# Procesar todos los datos históricos
+python manage.py process_metrics --all
+
+# Procesar solo un dispositivo
+python manage.py process_metrics --device=ESP32-001
+
+# Cambiar tamaño de ventana (default: 1 minuto)
+python manage.py process_metrics --window-minutes=5
+```
+
+**¿Cuándo ejecutarlo?**
+- Al iniciar el sistema por primera vez
+- Después de dejar corriendo el simulador por un tiempo
+- Cada vez que quieras actualizar las gráficas con datos nuevos
+
+---
+
 ## 🛠️ SCRIPTS ÚTILES
 
 Todos los scripts están en la carpeta `UTILS/`
@@ -133,6 +177,11 @@ python UTILS\create_esp32_device.py
 ### Diagnóstico completo del sistema:
 ```powershell
 python UTILS\diagnose_mqtt.py
+```
+
+### Procesar métricas para gráficas:
+```powershell
+python manage.py process_metrics --hours-back=24
 ```
 
 ---

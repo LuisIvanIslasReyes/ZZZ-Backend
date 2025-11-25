@@ -155,7 +155,10 @@ class FatigueMLService:
             spo2_score = 0
         
         # Componente 3: HRV (20%)
-        hrv_rmssd = metrics_dict.get('hrv_rmssd', 50.0)
+        hrv_rmssd = metrics_dict.get('hrv_rmssd')
+        if hrv_rmssd is None:
+            hrv_rmssd = 50.0  # Valor por defecto si no hay datos
+        
         if hrv_rmssd < 30:  # HRV bajo indica estrés
             hrv_score = (30 - hrv_rmssd) * 2
         else:

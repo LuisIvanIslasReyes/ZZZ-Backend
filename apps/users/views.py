@@ -168,10 +168,10 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             # Admin ve todos los empleados de todas las empresas
             return User.objects.filter(role='employee').select_related('supervisor', 'company')
         elif user.is_supervisor():
-            # Supervisor solo ve empleados de su empresa
+            # Supervisor solo ve SUS empleados (donde él es el supervisor)
             return User.objects.filter(
                 role='employee',
-                company=user.company
+                supervisor=user
             ).select_related('supervisor', 'company')
         return User.objects.none()
     
@@ -202,10 +202,10 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         if user.is_admin():
             return User.objects.filter(role='employee').select_related('supervisor', 'company')
         elif user.is_supervisor():
-            # Supervisor solo ve empleados de su empresa
+            # Supervisor solo ve SUS empleados (donde él es el supervisor)
             return User.objects.filter(
                 role='employee',
-                company=user.company
+                supervisor=user
             ).select_related('supervisor', 'company')
         return User.objects.none()
     

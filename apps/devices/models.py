@@ -26,8 +26,8 @@ class Device(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='managed_devices',
-        limit_choices_to={'role': 'supervisor'},
-        help_text="Supervisor que gestiona este dispositivo"
+        limit_choices_to={'role__in': ['supervisor', 'admin']},
+        help_text="Supervisor o Admin que gestiona este dispositivo"
     )
     
     company = models.ForeignKey(
@@ -73,17 +73,19 @@ class Device(models.Model):
         if self.employee and self.employee.role != 'employee':
             raise ValueError("Solo se pueden asignar dispositivos a usuarios con rol 'employee'")
         
-        # Validar que el supervisor sea realmente un supervisor
-        if self.supervisor and self.supervisor.role != 'supervisor':
-            raise ValueError("Solo usuarios con rol 'supervisor' pueden gestionar dispositivos")
+        # Validar que el supervisor sea supervisor o admin
+        if self.supervisor and self.supervisor.role not in ['supervisor', 'admin']:
+            raise ValueError("Solo usuarios con rol 'supervisor' o 'admin' pueden gestionar dispositivos")
         
-        # Validar que todos pertenezcan a la misma empresa
+        # Validar que todos pertenezcan a la misma empresa (excepto admin que puede gestionar todas)
         if self.employee and self.supervisor and self.company:
             if self.employee.company != self.company:
                 raise ValueError("El empleado debe pertenecer a la empresa del dispositivo")
-            if self.supervisor.company != self.company:
+            # Admin puede gestionar dispositivos de cualquier empresa
+            if self.supervisor.role != 'admin' and self.supervisor.company != self.company:
                 raise ValueError("El supervisor debe pertenecer a la empresa del dispositivo")
-            if self.employee.supervisor != self.supervisor:
+            # Solo validar coincidencia de supervisor si el supervisor del dispositivo no es admin
+            if self.supervisor.role != 'admin' and self.employee.supervisor != self.supervisor:
                 raise ValueError("El supervisor del dispositivo debe coincidir con el supervisor del empleado")
         
         super().save(*args, **kwargs)
