@@ -212,7 +212,9 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return UserUpdateSerializer
-        return UserSerializer
+        # Para GET (detalle), usar EmployeeListSerializer para incluir todos los campos
+        from .serializers import EmployeeListSerializer
+        return EmployeeListSerializer
     
     def perform_destroy(self, instance):
         # Verificar que el empleado pertenezca a la empresa del supervisor
