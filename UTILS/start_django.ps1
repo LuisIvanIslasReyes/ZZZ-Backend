@@ -4,7 +4,7 @@ Write-Host "INICIANDO SERVIDOR DJANGO CON MQTT"
 Write-Host "=" -NoNewline; Write-Host ("=" * 59)
 Write-Host ""
 
-Set-Location "C:\Users\bauti\Downloads\respaldos\ZZZ-Backend"
+# Set-Location "C:\Users\bauti\Downloads\respaldos\ZZZ-Backend"
 
 Write-Host "Activando entorno virtual..."
 & ".\venv\Scripts\Activate.ps1"

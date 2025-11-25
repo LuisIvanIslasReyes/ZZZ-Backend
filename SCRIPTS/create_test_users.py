@@ -52,7 +52,6 @@ def create_test_users():
                 'last_name': 'Supervisor',
                 'role': 'supervisor',
                 'is_active': True,
-                'admin': admin,
                 'department': 'Producción',
                 'position': 'Supervisor de Planta',
                 'phone': '+52 123 456 7890'

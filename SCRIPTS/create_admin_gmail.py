@@ -11,7 +11,7 @@ from apps.users.models import CustomUser
 
 # Crear o actualizar el usuario admin@gmail.com
 email = 'admin@gmail.com'
-password = 'cualquiera'
+password = '123'
 
 try:
     user = CustomUser.objects.get(email=email)
