@@ -6,8 +6,11 @@ Servicio para cargar y usar el modelo de machine learning.
 import os
 import joblib
 import numpy as np
+import logging
 from pathlib import Path
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 class FatigueMLService:
     """
@@ -20,10 +23,11 @@ class FatigueMLService:
         self.selected_features = []
         self.cluster_fatigue_map = {}
         self.model_loaded = False
-        self.model_type = 'kmeans'
+        self.model_type = 'placeholder'
         
-        # Intentar cargar el modelo al inicializar
-        self.load_model()
+        # NO cargar modelo automáticamente - usar placeholder
+        logger.info("✅ Servicio ML inicializado (modo placeholder)")
+
     
     def load_model(self, model_path=None):
         """
@@ -76,57 +80,21 @@ class FatigueMLService:
     def predict_fatigue_index(self, metrics_dict):
         """
         Predice el índice de fatiga basado en métricas procesadas.
+        Usa cálculo basado en heurísticas (placeholder).
         
         Args:
             metrics_dict (dict): Diccionario con las métricas procesadas.
-                                Debe incluir todos los features seleccionados.
         
         Returns:
             float: Índice de fatiga predicho (0-100).
-                   Si el modelo no está cargado, usa el cálculo placeholder.
         """
-        if not self.model_loaded:
-            # Fallback al cálculo placeholder
-            return self._calculate_placeholder(metrics_dict)
-        
-        try:
-            # Extraer features en el orden correcto
-            feature_values = []
-            for feature in self.selected_features:
-                value = metrics_dict.get(feature, 0)
-                # Manejar valores None
-                if value is None:
-                    value = 0
-                feature_values.append(value)
-            
-            # Normalizar usando el scaler entrenado
-            X = np.array([feature_values])
-            X_scaled = self.scaler.transform(X)
-            
-            # Predecir cluster
-            cluster = self.model.predict(X_scaled)[0]
-            
-            # Mapear cluster a nivel de fatiga
-            if self.model_type == 'kmeans':
-                fatigue_index = self.cluster_fatigue_map.get(cluster, 50.0)
-            else:
-                # Para DBSCAN u otros modelos, usar cálculo básico
-                fatigue_index = self._calculate_placeholder(metrics_dict)
-            
-            # Asegurar que esté en rango 0-100
-            fatigue_index = max(0.0, min(100.0, fatigue_index))
-            
-            return fatigue_index
-            
-        except Exception as e:
-            print(f"⚠️  Error en predicción ML: {str(e)}")
-            # Fallback al cálculo placeholder
-            return self._calculate_placeholder(metrics_dict)
+        # SIEMPRE usar cálculo placeholder hasta que el modelo sea reentrenado
+        return self._calculate_placeholder(metrics_dict)
     
     def _calculate_placeholder(self, metrics_dict):
         """
         Cálculo placeholder de fatiga cuando el modelo no está disponible.
-        Usa el mismo algoritmo que processors.py para compatibilidad.
+        Usa múltiples indicadores para detectar fatiga.
         
         Args:
             metrics_dict (dict): Diccionario con métricas procesadas.
@@ -134,50 +102,91 @@ class FatigueMLService:
         Returns:
             float: Índice de fatiga calculado (0-100).
         """
-        # Pesos para cada componente
-        WEIGHT_HR_ACTIVITY = 0.40
-        WEIGHT_SPO2 = 0.30
-        WEIGHT_HRV = 0.20
-        WEIGHT_DESATURATION = 0.10
+        fatigue_scores = []
         
-        # Componente 1: Ratio HR/Actividad (40%)
-        hr_activity_ratio = metrics_dict.get('hr_activity_ratio', 1.0)
-        if hr_activity_ratio > 1.2:  # HR muy alto para la actividad
-            hr_activity_score = min(100, (hr_activity_ratio - 1.0) * 100)
+        # Indicador 1: Ritmo cardíaco elevado
+        hr_avg = metrics_dict.get('hr_avg', 70)
+        if hr_avg > 140:
+            hr_score = min(100, (hr_avg - 70) * 1.5)
+        elif hr_avg > 120:
+            hr_score = min(100, (hr_avg - 70) * 1.2)
+        elif hr_avg > 100:
+            hr_score = min(100, (hr_avg - 70) * 1.0)
         else:
-            hr_activity_score = 0
+            hr_score = 0
+        fatigue_scores.append(hr_score)
         
-        # Componente 2: SpO2 (30%)
+        # Indicador 2: SpO2 bajo
         spo2_avg = metrics_dict.get('spo2_avg', 98.0)
-        if spo2_avg < 95:
-            spo2_score = (95 - spo2_avg) * 20  # 1% menos = +20 puntos
+        if spo2_avg < 92:
+            spo2_score = (98 - spo2_avg) * 15  # Muy crítico
+        elif spo2_avg < 95:
+            spo2_score = (98 - spo2_avg) * 10
+        elif spo2_avg < 97:
+            spo2_score = (98 - spo2_avg) * 5
         else:
             spo2_score = 0
+        fatigue_scores.append(spo2_score)
         
-        # Componente 3: HRV (20%)
+        # Indicador 3: HRV bajo (indica estrés/fatiga)
         hrv_rmssd = metrics_dict.get('hrv_rmssd')
-        if hrv_rmssd is None:
-            hrv_rmssd = 50.0  # Valor por defecto si no hay datos
+        if hrv_rmssd is not None:
+            if hrv_rmssd < 10:
+                hrv_score = 80
+            elif hrv_rmssd < 20:
+                hrv_score = 60
+            elif hrv_rmssd < 30:
+                hrv_score = 40
+            else:
+                hrv_score = 0
+            fatigue_scores.append(hrv_score)
         
-        if hrv_rmssd < 30:  # HRV bajo indica estrés
-            hrv_score = (30 - hrv_rmssd) * 2
-        else:
-            hrv_score = 0
+        # Indicador 4: Ratio HR/Actividad (HR alto con poca actividad)
+        hr_activity_ratio = metrics_dict.get('hr_activity_ratio', 1.0)
+        activity_level = metrics_dict.get('activity_level', 1.0)
         
-        # Componente 4: Desaturaciones (10%)
+        # Si hay poca actividad pero HR alto = fatiga
+        if activity_level < 0.5 and hr_avg > 90:
+            ratio_score = min(100, (hr_avg - 60) * 2)
+            fatigue_scores.append(ratio_score)
+        elif hr_activity_ratio > 100:
+            ratio_score = min(100, (hr_activity_ratio - 50) * 0.8)
+            fatigue_scores.append(ratio_score)
+        
+        # Indicador 5: Desaturaciones
         desaturation_count = metrics_dict.get('desaturation_count', 0)
-        desaturation_score = min(100, desaturation_count * 25)  # Cada desaturación = +25 puntos
+        if desaturation_count > 0:
+            desat_score = min(100, desaturation_count * 30)
+            fatigue_scores.append(desat_score)
         
-        # Calcular índice final
-        fatigue_index = (
-            hr_activity_score * WEIGHT_HR_ACTIVITY +
-            spo2_score * WEIGHT_SPO2 +
-            hrv_score * WEIGHT_HRV +
-            desaturation_score * WEIGHT_DESATURATION
-        )
+        # Indicador 6: Varianza de SpO2 (inestabilidad)
+        spo2_variance = metrics_dict.get('spo2_variance', 0)
+        if spo2_variance > 5:
+            variance_score = min(100, spo2_variance * 8)
+            fatigue_scores.append(variance_score)
+        
+        # Calcular fatiga final usando el promedio ponderado
+        if fatigue_scores:
+            # Dar más peso a los scores más altos (indicadores más críticos)
+            fatigue_scores_sorted = sorted(fatigue_scores, reverse=True)
+            
+            # Promedio ponderado: primer score 40%, segundo 30%, resto 30%
+            if len(fatigue_scores_sorted) >= 2:
+                fatigue_index = (
+                    fatigue_scores_sorted[0] * 0.40 +
+                    fatigue_scores_sorted[1] * 0.30 +
+                    sum(fatigue_scores_sorted[2:]) / max(1, len(fatigue_scores_sorted[2:])) * 0.30
+                )
+            else:
+                fatigue_index = fatigue_scores_sorted[0]
+        else:
+            fatigue_index = 0
         
         # Asegurar rango 0-100
         fatigue_index = max(0.0, min(100.0, fatigue_index))
+        
+        logger.debug(f"Cálculo placeholder: HR={hr_avg:.1f}, SpO2={spo2_avg:.1f}, "
+                    f"HRV={hrv_rmssd}, Actividad={activity_level:.3f} -> Fatiga={fatigue_index:.1f}")
         
         return fatigue_index
     

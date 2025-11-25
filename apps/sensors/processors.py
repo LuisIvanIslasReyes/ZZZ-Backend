@@ -268,8 +268,7 @@ class MetricsProcessor:
             hr_activity_ratio=hr_activity_ratio,
         )
         
-        logger.info(f"✅ Métricas procesadas: {device.device_identifier} | "
-                   f"Fatiga: {fatigue_index:.1f} | HR: {hr_avg:.1f} | SpO2: {spo2_avg:.1f}")
+        logger.debug(f"✅ {device.device_identifier}: Fatiga={fatigue_index:.1f} HR={hr_avg:.1f} SpO2={spo2_avg:.1f}")
         
         return processed
     

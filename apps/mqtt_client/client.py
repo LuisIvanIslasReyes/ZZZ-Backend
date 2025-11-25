@@ -22,11 +22,9 @@ class MQTTClient:
     def on_connect(self, client, userdata, flags, rc):
         """Callback cuando se conecta al broker MQTT"""
         if rc == 0:
-            logger.info("✅ Conectado al broker MQTT")
             self.connected = True
-            # Suscribirse al topic de todos los dispositivos
             client.subscribe("devices/+/sensors")
-            logger.info("📡 Suscrito a topic: devices/+/sensors")
+            logger.info("✅ MQTT conectado y suscrito")
         else:
             logger.error(f"❌ Error de conexión MQTT. Código: {rc}")
             self.connected = False
@@ -102,16 +100,17 @@ class MQTTClient:
             device.last_connection = timestamp
             device.save(update_fields=['last_connection'])
             
-            logger.info(f"✅ Datos guardados: {device_id} - HR: {heart_rate} BPM, SpO2: {spo2}%")
+            # Log más silencioso - solo debug
+            logger.debug(f"✅ {device_id}: HR={heart_rate} SpO2={spo2}%")
             
         except json.JSONDecodeError as e:
-            logger.error(f"❌ Error al decodificar JSON: {e}")
+            logger.error(f"❌ Error JSON: {e}")
         except Exception as e:
             logger.error(f"❌ Error procesando mensaje: {e}", exc_info=True)
     
     def on_subscribe(self, client, userdata, mid, granted_qos):
         """Callback cuando se completa la suscripción"""
-        logger.info(f"📋 Suscripción confirmada. QoS: {granted_qos}")
+        pass  # Silencioso
     
     def start(self):
         """Iniciar cliente MQTT"""
@@ -136,13 +135,11 @@ class MQTTClient:
             port = getattr(settings, 'MQTT_PORT', 1883)
             keepalive = getattr(settings, 'MQTT_KEEPALIVE', 60)
             
-            logger.info(f"🔄 Conectando a broker MQTT: {broker}:{port}")
+            logger.info(f"🚀 Cliente MQTT iniciando ({broker}:{port})...")
             self.client.connect(broker, port, keepalive)
             
             # Iniciar loop en segundo plano
             self.client.loop_start()
-            
-            logger.info("🚀 Cliente MQTT iniciado")
             
         except Exception as e:
             logger.error(f"❌ Error al iniciar cliente MQTT: {e}", exc_info=True)

@@ -25,8 +25,6 @@ class MqttClientConfig(AppConfig):
         if 'runserver' in sys.argv or 'gunicorn' in sys.argv[0]:
             try:
                 from .client import mqtt_client
-                logger.info("🚀 Iniciando cliente MQTT desde AppConfig...")
                 mqtt_client.start()
-                logger.info("✅ Cliente MQTT iniciado correctamente")
             except Exception as e:
-                logger.error(f"❌ Error al iniciar MQTT en AppConfig: {e}", exc_info=True)
+                logger.error(f"❌ Error al iniciar MQTT: {e}")

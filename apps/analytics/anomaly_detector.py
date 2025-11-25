@@ -19,18 +19,18 @@ class AnomalyDetector:
     Genera alertas automáticamente cuando detecta condiciones peligrosas.
     """
     
-    # Umbrales de detección
-    FATIGUE_CRITICAL = 85  # Fatiga crítica
-    FATIGUE_HIGH = 70      # Fatiga alta
-    FATIGUE_MEDIUM = 50    # Fatiga media
+    # Umbrales de detección (ajustados para mayor sensibilidad)
+    FATIGUE_CRITICAL = 80  # Fatiga crítica (bajado de 85)
+    FATIGUE_HIGH = 60      # Fatiga alta (bajado de 70)
+    FATIGUE_MEDIUM = 40    # Fatiga media (bajado de 50)
     
     SPO2_CRITICAL = 88     # SpO2 crítico
-    SPO2_LOW = 90          # SpO2 bajo
+    SPO2_LOW = 92          # SpO2 bajo (subido de 90 para mayor sensibilidad)
     
-    HR_VERY_HIGH = 160     # Frecuencia cardíaca muy alta
-    HR_HIGH = 140          # Frecuencia cardíaca alta
+    HR_VERY_HIGH = 140     # Frecuencia cardíaca muy alta (bajado de 160)
+    HR_HIGH = 120          # Frecuencia cardíaca alta (bajado de 140)
     
-    DESATURATION_WARNING = 3  # Número de desaturaciones para alerta
+    DESATURATION_WARNING = 2  # Número de desaturaciones para alerta (bajado de 3)
     
     def __init__(self):
         self.alerts_created = 0
@@ -45,22 +45,20 @@ class AnomalyDetector:
         Returns:
             int: Número de alertas creadas
         """
-        logger.info(f"🔍 Iniciando detección de anomalías (ventana: {window_minutes} minutos)")
-        
         # Obtener métricas recientes
         time_threshold = timezone.now() - timedelta(minutes=window_minutes)
         recent_metrics = ProcessedMetrics.objects.filter(
             window_end__gte=time_threshold
         ).select_related('device', 'employee')
         
-        logger.info(f"   Analizando {recent_metrics.count()} métricas recientes")
+        logger.debug(f"🔍 Analizando {recent_metrics.count()} métricas (ventana: {window_minutes}min)")
         
         for metric in recent_metrics:
             # Verificar si ya existe una alerta reciente para este empleado
             recent_alert = FatigueAlert.objects.filter(
                 employee=metric.employee,
                 created_at__gte=time_threshold,
-                resolved=False
+                is_resolved=False
             ).first()
             
             # Si ya hay una alerta sin resolver, evitar duplicados
@@ -74,12 +72,13 @@ class AnomalyDetector:
             self._check_desaturations(metric)
             self._check_combined_risks(metric)
         
-        logger.info(f"✅ Detección completada. Alertas creadas: {self.alerts_created}")
         return self.alerts_created
     
     def _check_fatigue_level(self, metric):
         """Verificar nivel de fatiga."""
         fatigue = metric.fatigue_index
+        
+        logger.debug(f"Verificando fatiga: {fatigue:.1f} (umbral crítico: {self.FATIGUE_CRITICAL})")
         
         if fatigue >= self.FATIGUE_CRITICAL:
             self._create_alert(
@@ -237,16 +236,22 @@ class AnomalyDetector:
             additional_data: Datos adicionales en formato JSON
         """
         try:
+            # Extraer el tipo de alerta desde additional_data
+            alert_type = additional_data.get('type', 'unknown')
+            
+            # Enriquecer el mensaje con métricas relevantes
+            enriched_message = (
+                f"{message} "
+                f"[HR: {metric.hr_avg:.0f} bpm, SpO2: {metric.spo2_avg:.1f}%]"
+            )
+            
             alert = FatigueAlert.objects.create(
                 employee=metric.employee,
-                device=metric.device,
                 supervisor=metric.employee.supervisor,
                 severity=severity,
-                message=message,
-                fatigue_index=metric.fatigue_index,
-                heart_rate=metric.hr_avg,
-                spo2=metric.spo2_avg,
-                additional_data=additional_data
+                alert_type=alert_type,
+                message=enriched_message,
+                fatigue_index=metric.fatigue_index
             )
             
             self.alerts_created += 1
@@ -281,11 +286,12 @@ class AnomalyDetector:
         alerts_created = 0
         
         for device in offline_devices:
-            # Verificar si ya existe una alerta de offline
+            # Verificar si ya existe una alerta de offline reciente
             existing_alert = FatigueAlert.objects.filter(
-                device=device,
-                additional_data__contains={'type': 'device_offline'},
-                resolved=False
+                employee=device.employee,
+                alert_type='device_offline',
+                is_resolved=False,
+                created_at__gte=time_threshold
             ).first()
             
             if existing_alert:
@@ -296,16 +302,11 @@ class AnomalyDetector:
             try:
                 FatigueAlert.objects.create(
                     employee=device.employee,
-                    device=device,
                     supervisor=device.employee.supervisor,
                     severity='medium',
-                    message=f'Dispositivo {device.device_id} sin conexión por {offline_minutes:.0f} minutos. Verificar estado.',
-                    fatigue_index=0,
-                    additional_data={
-                        'type': 'device_offline',
-                        'offline_minutes': offline_minutes,
-                        'last_connection': device.last_connection.isoformat()
-                    }
+                    alert_type='device_offline',
+                    message=f'Dispositivo {device.device_id} sin conexión por {offline_minutes:.0f} minutos. Verificar estado. [Última conexión: {device.last_connection.strftime("%H:%M")}]',
+                    fatigue_index=0
                 )
                 
                 alerts_created += 1

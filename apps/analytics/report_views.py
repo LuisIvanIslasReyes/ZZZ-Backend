@@ -128,8 +128,8 @@ class ReportViewSet(viewsets.ViewSet):
             'total': alerts.count(),
             'critical': alerts.filter(severity='critical').count(),
             'high': alerts.filter(severity='high').count(),
-            'resolved': alerts.filter(resolved=True).count(),
-            'pending': alerts.filter(resolved=False).count(),
+            'resolved': alerts.filter(is_resolved=True).count(),
+            'pending': alerts.filter(is_resolved=False).count(),
         }
         
         # Recomendaciones
@@ -289,7 +289,7 @@ class ReportViewSet(viewsets.ViewSet):
                 
                 pending_alerts = FatigueAlert.objects.filter(
                     employee=emp,
-                    resolved=False
+                    is_resolved=False
                 ).count()
                 
                 writer.writerow([
@@ -330,7 +330,7 @@ class ReportViewSet(viewsets.ViewSet):
                 'employee_email': emp.email,
                 'metrics': metrics,
                 'total_alerts': alerts.count(),
-                'pending_alerts': alerts.filter(resolved=False).count(),
+                'pending_alerts': alerts.filter(is_resolved=False).count(),
             })
         
         return Response({
@@ -501,8 +501,8 @@ class ReportViewSet(viewsets.ViewSet):
             'total': alerts.count(),
             'critical': alerts.filter(severity='critical').count(),
             'high': alerts.filter(severity='high').count(),
-            'resolved': alerts.filter(resolved=True).count(),
-            'pending': alerts.filter(resolved=False).count(),
+            'resolved': alerts.filter(is_resolved=True).count(),
+            'pending': alerts.filter(is_resolved=False).count(),
         }
         
         # Recomendaciones

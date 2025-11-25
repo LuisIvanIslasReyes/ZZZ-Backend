@@ -59,9 +59,7 @@ class MLAnalysisScheduler:
             self.scheduler.start()
             self.is_running = True
             
-            logger.info("✅ Scheduler de análisis ML iniciado")
-            logger.info(f"   📋 Detección de anomalías: cada {alert_interval_minutes} minutos")
-            logger.info(f"   📋 Generación de recomendaciones: cada {recommendation_interval_minutes} minutos")
+            logger.info(f"🚀 Scheduler ML iniciado (anomalías: {alert_interval_minutes}min | recomendaciones: {recommendation_interval_minutes}min)")
             
             # Ejecutar inmediatamente la primera vez
             self._run_anomaly_detection()
@@ -87,8 +85,6 @@ class MLAnalysisScheduler:
         Ejecuta detección de anomalías y crea alertas.
         Se ejecuta periódicamente en segundo plano.
         """
-        logger.info("🔍 Ejecutando análisis de anomalías ML...")
-        
         try:
             detector = AnomalyDetector()
             
@@ -96,9 +92,9 @@ class MLAnalysisScheduler:
             alerts_created = detector.detect_and_create_alerts(window_minutes=60)
             
             if alerts_created > 0:
-                logger.info(f"   ⚠️  {alerts_created} alerta(s) generada(s)")
+                logger.info(f"⚠️  {alerts_created} alerta(s) de fatiga generada(s)")
             else:
-                logger.info("   ✅ No se detectaron anomalías")
+                logger.debug("✅ Sin anomalías detectadas")
             
             return alerts_created
             

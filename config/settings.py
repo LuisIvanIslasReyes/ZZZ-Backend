@@ -13,6 +13,11 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 from pathlib import Path
 from decouple import config
 from datetime import timedelta
+import warnings
+
+# Silenciar warnings molestos
+warnings.filterwarnings('ignore', category=UserWarning, module='rest_framework_simplejwt')
+warnings.filterwarnings('ignore', message='pkg_resources is deprecated')
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -241,13 +246,14 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
+        'simple': {
+            'format': '{levelname:<7} {message}',
             'style': '{',
         },
-        'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
+    },
+    'filters': {
+        'require_debug_false': {
+            '()': 'django.utils.log.RequireDebugFalse',
         },
     },
     'handlers': {
@@ -257,14 +263,22 @@ LOGGING = {
         },
     },
     'loggers': {
-        'apps.mqtt_client': {
+        'apps': {
             'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,
         },
         'django': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': 'WARNING',  # Solo warnings y errores de Django
+        },
+        'django.utils.autoreload': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Reducir logs de autoreload
+        },
+        'apscheduler': {
+            'handlers': ['console'],
+            'level': 'WARNING',  # Reducir logs de scheduler
         },
     },
     'root': {

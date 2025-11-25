@@ -227,7 +227,7 @@ plt.colorbar(scatter, ax=ax4, label='Cluster')
 # 6.5 Fatigue Index por cluster
 ax5 = fig.add_subplot(gs[1, 2])
 fatigue_by_cluster = [y[kmeans_labels == i] for i in range(optimal_k)]
-bp = ax5.boxplot(fatigue_by_cluster, labels=[f'C{i}' for i in range(optimal_k)],
+bp = ax5.boxplot(fatigue_by_cluster, tick_labels=[f'C{i}' for i in range(optimal_k)],
                 patch_artist=True, notch=True)
 for patch, color in zip(bp['boxes'], plt.cm.viridis(np.linspace(0, 1, optimal_k))):
     patch.set_facecolor(color)

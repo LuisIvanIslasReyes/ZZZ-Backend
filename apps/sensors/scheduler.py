@@ -24,32 +24,44 @@ def process_metrics_job():
     Se ejecuta periódicamente en background.
     """
     try:
-        logger.info("🔄 Iniciando procesamiento automático de métricas...")
-        
         processor = MetricsProcessor(window_minutes=1)
         devices = Device.objects.filter(is_active=True)
         
         total_processed = 0
+        now = timezone.now()
         
         for device in devices:
             try:
-                # Procesar últimos 5 minutos para no sobrecargar
-                hours_back = 0.1  # 6 minutos
-                result = processor.process_device_data(device, hours_back=hours_back)
+                # Procesar últimas ventanas (últimos 5 minutos)
+                minutes_back = 5
+                window_start = now - timedelta(minutes=minutes_back)
                 
-                if result and result.get('windows_processed', 0) > 0:
-                    windows = result['windows_processed']
-                    total_processed += windows
-                    logger.info(f"  ✅ {device.device_identifier}: {windows} ventanas procesadas")
+                # Verificar si hay datos en este periodo
+                from apps.sensors.models import SensorData
+                has_data = SensorData.objects.filter(
+                    device=device,
+                    timestamp__gte=window_start,
+                    timestamp__lte=now
+                ).exists()
+                
+                if not has_data:
+                    continue
+                
+                # Procesar ventana actual
+                result = processor.process_device_window(device, window_start, now)
+                
+                if result:
+                    total_processed += 1
+                    logger.info(f"  ✅ {device.device_identifier}: Ventana procesada")
                     
             except Exception as e:
                 logger.error(f"  ❌ Error procesando {device.device_identifier}: {e}")
                 continue
         
         if total_processed > 0:
-            logger.info(f"✅ Procesamiento automático completado: {total_processed} ventanas totales")
+            logger.info(f"📊 {total_processed} dispositivo(s) procesado(s)")
         else:
-            logger.debug("ℹ️  No hay datos nuevos para procesar")
+            logger.debug("ℹ️  Sin datos nuevos")
             
     except Exception as e:
         logger.error(f"❌ Error en procesamiento automático: {e}", exc_info=True)
@@ -84,7 +96,6 @@ def start_scheduler():
             replace_existing=True,
             name="Procesamiento automático de métricas"
         )
-        logger.info("📋 Job programado: Procesar métricas cada 2 minutos")
         
         # Job 2: Limpiar ejecuciones antiguas cada día
         scheduler.add_job(
@@ -95,11 +106,10 @@ def start_scheduler():
             replace_existing=True,
             name="Limpieza de ejecuciones antiguas"
         )
-        logger.info("📋 Job programado: Limpiar ejecuciones cada 24 horas")
         
         # Iniciar scheduler
         scheduler.start()
-        logger.info("🚀 Scheduler de procesamiento automático iniciado")
+        logger.info("🚀 Scheduler de métricas iniciado (intervalo: 2min)")
         
         return scheduler
         
