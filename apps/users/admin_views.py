@@ -12,7 +12,9 @@ from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Avg, Q, Sum
 from django.utils import timezone
+from django.http import HttpResponse
 from datetime import timedelta
+import csv
 
 from apps.users.permissions import IsAdmin
 from apps.users.admin_serializers import (
@@ -564,3 +566,118 @@ class AdminViewSet(viewsets.ViewSet):
             'count': logs.count(),
             'results': serializer.data
         })
+    
+    @action(detail=False, methods=['get'], url_path='export-my-data')
+    def export_my_data(self, request):
+        """
+        Exporta los datos personales del administrador actual en formato CSV.
+        
+        Endpoint: GET /api/admin/export-my-data/
+        
+        Retorna un archivo CSV descargable con:
+        - Información personal (nombre, email, rol, etc.)
+        - Fecha de creación de cuenta
+        - Estado de la cuenta
+        - Información de contacto
+        - Compañía asociada (si aplica)
+        
+        Seguridad:
+        - Solo usuarios autenticados con rol 'admin'
+        - Solo puede exportar sus propios datos
+        - Se registra la acción en el log de actividad
+        """
+        user = request.user
+        
+        # Crear respuesta HTTP con tipo CSV
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="mis_datos_{user.id}_{timezone.now().strftime("%Y%m%d_%H%M%S")}.csv"'
+        
+        # Agregar BOM para compatibilidad con Excel en Windows
+        response.write('\ufeff')
+        
+        # Crear escritor CSV
+        writer = csv.writer(response)
+        
+        # Encabezado del archivo
+        writer.writerow(['Campo', 'Valor'])
+        writer.writerow([])  # Línea en blanco
+        
+        # Información personal
+        writer.writerow(['=== INFORMACIÓN PERSONAL ===', ''])
+        writer.writerow(['ID de Usuario', user.id])
+        writer.writerow(['Nombre', user.first_name or 'N/A'])
+        writer.writerow(['Apellido', user.last_name or 'N/A'])
+        writer.writerow(['Nombre Completo', user.get_full_name() or 'N/A'])
+        writer.writerow(['Correo Electrónico', user.email])
+        writer.writerow(['Rol', user.get_role_display()])
+        writer.writerow([])  # Línea en blanco
+        
+        # Información de contacto
+        writer.writerow(['=== INFORMACIÓN DE CONTACTO ===', ''])
+        writer.writerow(['Teléfono', user.phone or 'N/A'])
+        writer.writerow(['Departamento', user.department or 'N/A'])
+        writer.writerow(['Posición', user.position or 'N/A'])
+        writer.writerow([])  # Línea en blanco
+        
+        # Información de cuenta
+        writer.writerow(['=== INFORMACIÓN DE CUENTA ===', ''])
+        writer.writerow(['Estado de Cuenta', 'Activa' if user.is_active else 'Inactiva'])
+        writer.writerow(['Es Staff', 'Sí' if user.is_staff else 'No'])
+        writer.writerow(['Es Superusuario', 'Sí' if user.is_superuser else 'No'])
+        writer.writerow(['Fecha de Creación', user.created_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(user, 'created_at') and user.created_at else 'N/A'])
+        writer.writerow(['Último Inicio de Sesión', user.last_login.strftime('%Y-%m-%d %H:%M:%S') if user.last_login else 'Nunca'])
+        writer.writerow(['Última Actualización', user.updated_at.strftime('%Y-%m-%d %H:%M:%S') if hasattr(user, 'updated_at') and user.updated_at else 'N/A'])
+        writer.writerow([])  # Línea en blanco
+        
+        # Información organizacional
+        writer.writerow(['=== INFORMACIÓN ORGANIZACIONAL ===', ''])
+        if hasattr(user, 'company') and user.company:
+            writer.writerow(['Compañía', user.company.name])
+            writer.writerow(['Email de Compañía', user.company.contact_email])
+        else:
+            writer.writerow(['Compañía', 'N/A'])
+        writer.writerow([])  # Línea en blanco
+        
+        # Estadísticas (solo para admins que gestionan empresas)
+        writer.writerow(['=== ESTADÍSTICAS ===', ''])
+        if user.role == 'admin':
+            # Contar supervisores en todas las empresas
+            supervisors_count = User.objects.filter(role='supervisor').count()
+            active_supervisors_count = User.objects.filter(role='supervisor', is_active=True).count()
+            writer.writerow(['Total de Supervisores en el Sistema', supervisors_count])
+            writer.writerow(['Supervisores Activos', active_supervisors_count])
+            
+            # Empleados totales en el sistema
+            employees_count = User.objects.filter(role='employee').count()
+            active_employees_count = User.objects.filter(role='employee', is_active=True).count()
+            writer.writerow(['Total de Empleados en el Sistema', employees_count])
+            writer.writerow(['Empleados Activos', active_employees_count])
+        elif user.role == 'supervisor':
+            # Para supervisores: contar sus empleados
+            employees_count = user.employees.count()
+            active_employees_count = user.employees.filter(is_active=True).count()
+            writer.writerow(['Total de Empleados Asignados', employees_count])
+            writer.writerow(['Empleados Activos', active_employees_count])
+        else:
+            writer.writerow(['Estadísticas', 'No disponible para este rol'])
+        writer.writerow([])  # Línea en blanco
+        
+        # Información de privacidad
+        writer.writerow(['=== INFORMACIÓN SOBRE PRIVACIDAD ===', ''])
+        writer.writerow(['Generado el', timezone.now().strftime('%Y-%m-%d %H:%M:%S')])
+        writer.writerow(['Nota', 'Este archivo contiene información personal. Manténgalo seguro.'])
+        
+        # Registrar actividad
+        ActivityLog.log_action(
+            user=request.user,
+            action='other',
+            resource_type='user',
+            resource_id=user.id,
+            details={
+                'action_type': 'export_personal_data',
+                'format': 'csv'
+            },
+            request=request
+        )
+        
+        return response
