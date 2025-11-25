@@ -234,7 +234,8 @@ class EmployeeProfileView(generics.RetrieveAPIView):
     GET /api/employee/me/
     """
     permission_classes = [IsAuthenticated]
-    serializer_class = UserSerializer
+    from .serializers import EmployeeListSerializer
+    serializer_class = EmployeeListSerializer
     
     def get_object(self):
         return self.request.user
