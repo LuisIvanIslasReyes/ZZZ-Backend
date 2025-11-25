@@ -76,7 +76,6 @@ class Command(BaseCommand):
             self.stdout.write(f"   - Total: {summary['total']}")
             self.stdout.write(f"   - Pendientes: {summary['pending']}")
             self.stdout.write(f"   - Aplicadas: {summary['applied']}")
-            self.stdout.write(f"   - Rechazadas: {summary['rejected']}")
             self.stdout.write('')
             self.stdout.write(self.style.SUCCESS('=' * 80))
             

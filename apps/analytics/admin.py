@@ -1,5 +1,6 @@
 from django.contrib import admin
 from .models import FatigueAlert, RoutineRecommendation
+from .simulator_models import SimulatorSession
 
 
 @admin.register(FatigueAlert)
@@ -61,3 +62,47 @@ class RoutineRecommendationAdmin(admin.ModelAdmin):
         from django.utils import timezone
         queryset.update(is_applied=True, applied_at=timezone.now())
     mark_as_applied.short_description = "Marcar como aplicada"
+
+
+@admin.register(SimulatorSession)
+class SimulatorSessionAdmin(admin.ModelAdmin):
+    list_display = ['device_id', 'employee', 'status', 'fatigue_profile', 'activity_mode', 'current_fatigue', 'messages_sent', 'started_at']
+    list_filter = ['status', 'fatigue_profile', 'activity_mode', 'started_at']
+    search_fields = ['device_id', 'employee__email', 'employee__first_name', 'employee__last_name']
+    readonly_fields = ['started_at', 'stopped_at', 'created_by', 'updated_at', 'messages_sent', 'current_fatigue']
+    date_hierarchy = 'started_at'
+    
+    fieldsets = (
+        ('Información Básica', {
+            'fields': ('employee', 'device_id', 'status', 'created_by')
+        }),
+        ('Configuración de Simulación', {
+            'fields': ('fatigue_profile', 'activity_mode', 'base_heart_rate', 'base_spo2', 'initial_fatigue', 'fatigue_rate')
+        }),
+        ('Configuración MQTT', {
+            'fields': ('mqtt_broker', 'mqtt_port', 'publish_interval'),
+            'classes': ('collapse',)
+        }),
+        ('Estadísticas', {
+            'fields': ('current_fatigue', 'messages_sent', 'error_message')
+        }),
+        ('Timestamps', {
+            'fields': ('started_at', 'stopped_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    actions = ['stop_simulators']
+    
+    def stop_simulators(self, request, queryset):
+        from apps.analytics.simulator_manager import simulator_manager
+        from django.utils import timezone
+        
+        count = 0
+        for session in queryset.filter(status='running'):
+            if simulator_manager.stop_simulator(session.id):
+                count += 1
+        
+        self.message_user(request, f'{count} simulador(es) detenido(s) exitosamente.')
+    
+    stop_simulators.short_description = "Detener simuladores seleccionados"

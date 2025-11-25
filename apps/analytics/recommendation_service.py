@@ -447,8 +447,7 @@ class RecommendationService:
             supervisor=supervisor,
             employee=employee,
             recommendation_type=recommendation_type,
-            applied=False,
-            rejected=False
+            is_applied=False
         ).first()
         
         if existing:
@@ -489,15 +488,14 @@ class RecommendationService:
             query = query.filter(supervisor=supervisor)
         
         total = query.count()
-        pending = query.filter(applied=False, rejected=False).count()
-        applied = query.filter(applied=True).count()
-        rejected = query.filter(rejected=False).count()
+        pending = query.filter(is_applied=False).count()
+        applied = query.filter(is_applied=True).count()
         
-        by_type = query.filter(applied=False, rejected=False).values('recommendation_type').annotate(
+        by_type = query.filter(is_applied=False).values('recommendation_type').annotate(
             count=Count('id')
         )
         
-        by_priority = query.filter(applied=False, rejected=False).values('priority').annotate(
+        by_priority = query.filter(is_applied=False).values('priority').annotate(
             count=Count('id')
         ).order_by('-priority')
         
@@ -505,7 +503,6 @@ class RecommendationService:
             'total': total,
             'pending': pending,
             'applied': applied,
-            'rejected': rejected,
             'by_type': {item['recommendation_type']: item['count'] for item in by_type},
             'by_priority': {item['priority']: item['count'] for item in by_priority}
         }

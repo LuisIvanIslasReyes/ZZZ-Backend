@@ -7,6 +7,8 @@ import os
 import sys
 import pandas as pd
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # No mostrar ventanas, solo guardar archivos
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.cluster import KMeans, DBSCAN
