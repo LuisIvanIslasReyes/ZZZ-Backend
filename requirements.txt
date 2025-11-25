@@ -10,6 +10,9 @@ psycopg[binary]>=3.1.0
 # MQTT
 paho-mqtt==1.6.1
 
+# Excel generation
+openpyxl==3.1.2
+
 # Machine Learning & Data Processing
 pandas>=2.0.0
 numpy>=1.24.0
