@@ -44,12 +44,14 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     
     Roles:
     - admin: Equipo de desarrollo, gestiona empresas (clientes)
-    - supervisor: Cuenta de empresa, gestiona empleados de su empresa
+    - supervisor: Cuenta de empresa (1 por empresa), gestiona empleados de su empresa
     - employee: Empleado que usa el wearable, pertenece a una empresa
     
     Jerarquía:
     Admin (equipo dev) → Companies (N)
-    Company (1) → Supervisors (N) → Employees (N)
+    Company (1) = Supervisor (1) → Employees (N)
+    
+    Nota: Los supervisores SON las empresas. Cada empresa tiene solo un supervisor activo.
     """
     
     ROLE_CHOICES = [
@@ -88,10 +90,10 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         blank=True,
         related_name='users',
         verbose_name='Empresa',
-        help_text='Empresa a la que pertenece (supervisores y empleados)'
+        help_text='Empresa a la que pertenece. Supervisores tienen 1 cuenta por empresa.'
     )
     
-    # Relaciones jerárquicas
+    # Relaciones jerárquicas (solo para empleados)
     supervisor = models.ForeignKey(
         'self',
         on_delete=models.SET_NULL,
@@ -100,7 +102,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         related_name='employees',
         limit_choices_to={'role': 'supervisor'},
         verbose_name='Supervisor',
-        help_text='Supervisor asignado (solo para empleados)'
+        help_text='Supervisor asignado. Este campo se asigna automáticamente al supervisor de la empresa (solo para empleados)'
     )
     
     # Campos de estado
@@ -162,10 +164,16 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     
     def get_supervised_employees(self):
         """
-        Retorna los empleados supervisados por este usuario (si es supervisor).
+        Retorna los empleados de la empresa de este supervisor.
+        Los supervisores ahora ven TODOS los empleados de su empresa.
         """
-        if self.is_supervisor():
-            return self.employees.filter(is_active=True)
+        if self.is_supervisor() and self.company:
+            # Retornar todos los empleados de la empresa del supervisor
+            return CustomUser.objects.filter(
+                company=self.company,
+                role='employee',
+                is_active=True
+            )
         return CustomUser.objects.none()
     
     def get_supervisor_count(self):

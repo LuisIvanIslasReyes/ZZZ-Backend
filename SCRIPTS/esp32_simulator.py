@@ -148,15 +148,15 @@ class ESP32Simulator:
             self.activity_mode = random.choices(activities, weights=weights)[0]
             print(f"🔄 [{self.device_id}] Cambio de actividad: {self.activity_mode}")
         
-        # Incrementar fatiga gradualmente (más rápido con actividad pesada)
-        fatigue_increase = {
-            'resting': -0.2,    # Recuperación
-            'light': 0.1,
-            'moderate': 0.3,
-            'heavy': 0.8
+        # Cambio de fatiga según modo de actividad
+        fatigue_changes = {
+            'resting': -0.5,    # Recuperación en reposo (más rápida)
+            'light': 0.1,       # Incremento lento
+            'moderate': 0.3,    # Incremento moderado
+            'heavy': 0.8        # Incremento rápido
         }
         
-        self.fatigue_level += fatigue_increase.get(self.activity_mode, 0)
+        self.fatigue_level += fatigue_changes.get(self.activity_mode, 0)
         self.fatigue_level = max(0, min(100, self.fatigue_level))  # Limitar 0-100
     
     def generate_sensor_data(self):

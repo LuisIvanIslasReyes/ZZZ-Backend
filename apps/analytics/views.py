@@ -108,8 +108,8 @@ class FatigueAlertViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'destroy']:
             # Solo Admin y Supervisor pueden crear/eliminar
             return [IsAuthenticated(), IsAdminOrSupervisor()]
-        elif self.action in ['update', 'partial_update', 'resolve', 'unresolve']:
-            # Solo Admin y Supervisor pueden actualizar/resolver
+        elif self.action in ['update', 'partial_update', 'resolve', 'unresolve', 'acknowledge']:
+            # Solo Admin y Supervisor pueden actualizar/resolver/reconocer
             return [IsAuthenticated(), IsAdminOrSupervisor()]
         else:
             return [IsAuthenticated()]
@@ -117,6 +117,30 @@ class FatigueAlertViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Crear alerta."""
         serializer.save()
+    
+    @action(detail=True, methods=['post'])
+    def acknowledge(self, request, pk=None):
+        """
+        Reconocer/marcar alerta como vista.
+        """
+        alert = self.get_object()
+        
+        if alert.is_acknowledged:
+            return Response(
+                {'error': 'La alerta ya está reconocida'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        alert.is_acknowledged = True
+        alert.acknowledged_at = timezone.now()
+        alert.acknowledged_by = request.user
+        alert.save()
+        
+        serializer = FatigueAlertDetailSerializer(alert)
+        return Response({
+            'message': 'Alerta reconocida exitosamente',
+            'alert': serializer.data
+        })
     
     @action(detail=True, methods=['post'])
     def resolve(self, request, pk=None):
@@ -242,102 +266,6 @@ class FatigueAlertViewSet(viewsets.ModelViewSet):
         
         serializer = FatigueAlertListSerializer(alerts, many=True)
         return Response(serializer.data)
-    
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdminOrSupervisor])
-    def send_team_notification(self, request):
-        """
-        Enviar notificación al equipo.
-        Crea alertas de tipo 'notification' para todos los empleados del supervisor.
-        
-        Body params:
-        - title: Título de la notificación (requerido)
-        - message: Mensaje de la notificación (requerido)
-        - severity: 'info', 'warning', o 'critical' (opcional, default: 'info')
-        - employee_ids: Lista de IDs de empleados específicos (opcional)
-        """
-        user = request.user
-        title = request.data.get('title', '').strip()
-        message = request.data.get('message', '').strip()
-        severity = request.data.get('severity', 'info')
-        employee_ids = request.data.get('employee_ids', [])
-        
-        # Validaciones
-        if not title:
-            return Response(
-                {'error': 'El título es requerido'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if not message:
-            return Response(
-                {'error': 'El mensaje es requerido'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Mapear severity de frontend a backend
-        severity_map = {
-            'info': 'low',
-            'warning': 'medium',
-            'critical': 'high'
-        }
-        backend_severity = severity_map.get(severity, 'low')
-        
-        # Obtener empleados
-        from apps.users.models import CustomUser
-        
-        if employee_ids:
-            # Notificación a empleados específicos
-            employees = CustomUser.objects.filter(
-                id__in=employee_ids,
-                role='employee'
-            )
-        elif user.role == 'supervisor':
-            # Notificación a todos los empleados del supervisor
-            employees = CustomUser.objects.filter(
-                supervisor=user,
-                role='employee'
-            )
-        elif user.role == 'admin':
-            # Admin puede notificar a todos los empleados
-            employees = CustomUser.objects.filter(role='employee')
-        else:
-            return Response(
-                {'error': 'No tienes permisos para enviar notificaciones'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        if not employees.exists():
-            return Response(
-                {'error': 'No se encontraron empleados para notificar'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Crear alertas de notificación para cada empleado
-        notifications_created = 0
-        full_message = f"📢 {title}\n\n{message}"
-        
-        for employee in employees:
-            # Determinar el supervisor del empleado
-            supervisor = employee.supervisor if hasattr(employee, 'supervisor') and employee.supervisor else user
-            
-            FatigueAlert.objects.create(
-                employee=employee,
-                supervisor=supervisor,
-                severity=backend_severity,
-                alert_type='notification',
-                message=full_message,
-                fatigue_index=0.0,  # Las notificaciones no tienen índice de fatiga
-                is_resolved=False
-            )
-            notifications_created += 1
-        
-        return Response({
-            'success': True,
-            'message': f'Notificación enviada a {notifications_created} empleado(s)',
-            'notifications_sent': notifications_created,
-            'title': title,
-            'severity': severity
-        }, status=status.HTTP_201_CREATED)
 
 
 class RoutineRecommendationViewSet(viewsets.ModelViewSet):

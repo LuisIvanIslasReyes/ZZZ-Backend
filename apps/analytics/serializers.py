@@ -28,7 +28,10 @@ class FatigueAlertListSerializer(serializers.ModelSerializer):
             'alert_type',
             'message',
             'fatigue_index',
+            'is_acknowledged',
+            'acknowledged_at',
             'is_resolved',
+            'resolved_at',
             'created_at',
         ]
         read_only_fields = ['id', 'timestamp', 'created_at']
@@ -43,6 +46,7 @@ class FatigueAlertDetailSerializer(serializers.ModelSerializer):
     supervisor_name = serializers.CharField(source='supervisor.get_full_name', read_only=True)
     supervisor_email = serializers.EmailField(source='supervisor.email', read_only=True)
     severity_display = serializers.CharField(source='get_severity_display', read_only=True)
+    acknowledged_by_name = serializers.CharField(source='acknowledged_by.get_full_name', read_only=True, allow_null=True)
     resolved_by_name = serializers.CharField(source='resolved_by.get_full_name', read_only=True, allow_null=True)
     
     # Información adicional
@@ -65,6 +69,10 @@ class FatigueAlertDetailSerializer(serializers.ModelSerializer):
             'alert_type',
             'message',
             'fatigue_index',
+            'is_acknowledged',
+            'acknowledged_at',
+            'acknowledged_by',
+            'acknowledged_by_name',
             'is_resolved',
             'resolved_at',
             'resolved_by',

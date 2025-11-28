@@ -56,6 +56,27 @@ class FatigueAlert(models.Model):
         help_text="Índice de fatiga en el momento de la alerta"
     )
     
+    is_acknowledged = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Si la alerta fue reconocida/vista"
+    )
+    
+    acknowledged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Momento en que se reconoció la alerta"
+    )
+    
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='acknowledged_alerts',
+        help_text="Usuario que reconoció la alerta"
+    )
+    
     is_resolved = models.BooleanField(
         default=False,
         db_index=True,

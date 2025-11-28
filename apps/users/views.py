@@ -94,16 +94,19 @@ class CurrentUserView(generics.RetrieveUpdateAPIView):
 
 
 # ==================== VISTAS PARA ADMINISTRADOR ====================
+# NOTA: Los supervisores son las cuentas de las empresas.
+# Los admins pueden crear y gestionar estas cuentas desde aquí.
+# Cada empresa = 1 supervisor activo.
 
 class SupervisorListCreateView(generics.ListCreateAPIView):
     """
-    Vista para listar y crear supervisores (solo Admin).
+    Vista para listar y crear supervisores/cuentas de empresa (solo Admin).
     GET/POST /api/admin/supervisors/
     """
     permission_classes = [CanManageSupervisors]
     
     def get_queryset(self):
-        return User.objects.filter(role='supervisor').select_related('admin').prefetch_related('employees')
+        return User.objects.filter(role='supervisor').select_related('company').order_by('-created_at')
     
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -111,19 +114,26 @@ class SupervisorListCreateView(generics.ListCreateAPIView):
         return SupervisorListSerializer
     
     def perform_create(self, serializer):
-        # Asignar el admin actual al supervisor
-        serializer.save(admin=self.request.user, role='supervisor')
+        # Crear supervisor (cuenta de empresa)
+        # Si el admin que crea tiene `company` asignada, usarla como empresa del supervisor.
+        # Esto permite que el frontend no tenga que enviar `company` en el formulario.
+        company = getattr(self.request.user, 'company', None)
+        if company:
+            serializer.save(role='supervisor', company=company)
+        else:
+            # Si no hay company en el usuario, delegar a serializer (y a sus validaciones)
+            serializer.save(role='supervisor')
 
 
 class SupervisorDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Vista para ver, actualizar y eliminar supervisores (solo Admin).
+    Vista para ver, actualizar y eliminar supervisores/cuentas de empresa (solo Admin).
     GET/PUT/DELETE /api/admin/supervisors/{id}/
     """
     permission_classes = [CanManageSupervisors]
     
     def get_queryset(self):
-        return User.objects.filter(role='supervisor').select_related('admin').prefetch_related('employees')
+        return User.objects.filter(role='supervisor').select_related('company')
     
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
@@ -169,10 +179,10 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
             # Admin ve todos los empleados de todas las empresas
             return User.objects.filter(role='employee').select_related('supervisor', 'company')
         elif user.is_supervisor():
-            # Supervisor solo ve SUS empleados (donde él es el supervisor)
+            # Supervisor ve TODOS los empleados de su empresa
             return User.objects.filter(
                 role='employee',
-                supervisor=user
+                company=user.company
             ).select_related('supervisor', 'company')
         return User.objects.none()
     
@@ -182,10 +192,24 @@ class EmployeeListCreateView(generics.ListCreateAPIView):
         return EmployeeListSerializer
     
     def perform_create(self, serializer):
-        # Asignar el supervisor actual y la empresa al empleado
+        user = self.request.user
+        # Obtener el supervisor activo de la empresa
+        supervisor = None
+        if user.is_supervisor():
+            # Si el usuario es supervisor, él mismo es el supervisor
+            supervisor = user
+        elif user.is_admin() and user.company:
+            # Si es admin con empresa, buscar el supervisor de esa empresa
+            supervisor = User.objects.filter(
+                company=user.company,
+                role='supervisor',
+                is_active=True
+            ).first()
+        
+        # Asignar el supervisor y la empresa al empleado
         serializer.save(
-            supervisor=self.request.user,
-            company=self.request.user.company,
+            supervisor=supervisor,
+            company=user.company,
             role='employee'
         )
 
@@ -203,10 +227,10 @@ class EmployeeDetailView(generics.RetrieveUpdateDestroyAPIView):
         if user.is_admin():
             return User.objects.filter(role='employee').select_related('supervisor', 'company')
         elif user.is_supervisor():
-            # Supervisor solo ve SUS empleados (donde él es el supervisor)
+            # Supervisor ve TODOS los empleados de su empresa
             return User.objects.filter(
                 role='employee',
-                supervisor=user
+                company=user.company
             ).select_related('supervisor', 'company')
         return User.objects.none()
     

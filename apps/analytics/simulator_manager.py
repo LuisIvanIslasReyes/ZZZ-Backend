@@ -203,9 +203,21 @@ class ESP32SimulatorThread:
         """Actualiza el estado del simulador."""
         self.time_offset += 1
         
-        # Incrementar fatiga gradualmente
-        self.fatigue_level += self.fatigue_rate / (60 / self.publish_interval)
-        self.fatigue_level = min(100, self.fatigue_level)
+        # Cambio de fatiga según modo de actividad
+        fatigue_changes = {
+            'resting': -0.3,    # Recuperación en reposo
+            'light': 0.1,       # Incremento lento
+            'moderate': 0.3,    # Incremento moderado
+            'heavy': 0.8        # Incremento rápido
+        }
+        
+        # Aplicar cambio de fatiga basado en actividad y fatigue_rate
+        base_change = fatigue_changes.get(self.activity_mode, 0)
+        # El fatigue_rate ajusta la velocidad general (multiplicador)
+        fatigue_change = base_change * (self.fatigue_rate / 0.5)  # 0.5 es el valor base
+        
+        self.fatigue_level += fatigue_change / (60 / self.publish_interval)
+        self.fatigue_level = max(0, min(100, self.fatigue_level))  # Limitar entre 0-100
         
         # Cambio aleatorio de actividad cada ~2 minutos
         if self.time_offset % (120 // self.publish_interval) == 0:

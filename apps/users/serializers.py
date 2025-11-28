@@ -64,10 +64,9 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if role == 'admin' and (company or supervisor):
             raise serializers.ValidationError('Los administradores no deben tener empresa ni supervisor asignado')
         
-        # Empleados deben tener supervisor de la misma empresa
-        if role == 'employee' and supervisor:
-            if supervisor.company != company:
-                raise serializers.ValidationError({'supervisor': 'El supervisor debe pertenecer a la misma empresa'})
+        # Supervisores no deben tener supervisor asignado (son la empresa)
+        if role == 'supervisor' and supervisor:
+            attrs['supervisor'] = None
         
         return attrs
     
@@ -99,6 +98,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         instance = self.instance
         role = attrs.get('role', instance.role)
         supervisor = attrs.get('supervisor', instance.supervisor)
+        company = attrs.get('company', instance.company)
         
         # Validar jerarquía
         if role == 'supervisor' and supervisor:
@@ -106,6 +106,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         
         if role == 'admin':
             attrs['supervisor'] = None
+            attrs['company'] = None
         
         return attrs
 
@@ -209,27 +210,44 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     
     def get_supervisor_name(self, obj):
         """
-        Retorna el nombre completo del supervisor si existe.
+        Retorna el nombre completo del supervisor (el supervisor de la empresa).
         """
         if obj.supervisor:
             return obj.supervisor.get_full_name()
+        # Si no tiene supervisor asignado pero tiene empresa, buscar el supervisor de la empresa
+        if obj.company:
+            company_supervisor = CustomUser.objects.filter(
+                company=obj.company,
+                role='supervisor',
+                is_active=True
+            ).first()
+            if company_supervisor:
+                return company_supervisor.get_full_name()
         return None
 
 
 class SupervisorListSerializer(serializers.ModelSerializer):
     """
     Serializer simplificado para listar supervisores (para admins).
+    Nota: Los supervisores ahora son cuentas de empresa (1 por empresa).
     """
     full_name = serializers.CharField(source='get_full_name', read_only=True)
+    company_name = serializers.CharField(source='company.name', read_only=True)
     employee_count = serializers.SerializerMethodField()
     
     class Meta:
         model = CustomUser
-        fields = ['id', 'email', 'first_name', 'last_name', 'full_name', 'employee_count', 'is_active', 'created_at']
+        fields = ['id', 'email', 'first_name', 'last_name', 'full_name', 'company', 'company_name', 'employee_count', 'is_active', 'created_at']
         read_only_fields = fields
     
     def get_employee_count(self, obj):
         """
-        Retorna el número de empleados supervisados.
+        Retorna el número de empleados de la empresa del supervisor.
         """
-        return obj.employees.filter(is_active=True).count()
+        if obj.company:
+            return CustomUser.objects.filter(
+                company=obj.company,
+                role='employee',
+                is_active=True
+            ).count()
+        return 0

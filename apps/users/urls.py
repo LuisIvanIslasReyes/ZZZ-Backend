@@ -12,7 +12,8 @@ urlpatterns = [
     path('change-password/', views.ChangePasswordView.as_view(), name='change_password'),
     path('me/', views.CurrentUserView.as_view(), name='current_user'),
     
-    # ==================== Admin - Gestión de Supervisores ====================
+    # ==================== Admin - Gestión de Supervisores/Empresas ====================
+    # NOTA: Los supervisores son las cuentas de las empresas (1 supervisor = 1 empresa)
     path('admin/supervisors/', views.SupervisorListCreateView.as_view(), name='supervisor_list_create'),
     path('admin/supervisors/<int:pk>/', views.SupervisorDetailView.as_view(), name='supervisor_detail'),
     path('admin/stats/', views.AdminStatsView.as_view(), name='admin_stats'),
