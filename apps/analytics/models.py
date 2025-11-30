@@ -293,3 +293,123 @@ class SymptomReport(models.Model):
     
     def __str__(self):
         return f"{self.get_symptom_type_display()} ({self.get_severity_display()}) - {self.employee.get_full_name()}"
+
+
+class ScheduledBreak(models.Model):
+    """
+    Modelo para descansos programados por empleados.
+    Permite a los empleados solicitar/programar sus descansos.
+    """
+    BREAK_TYPES = [
+        ('coffee', 'Café/Snack'),
+        ('lunch', 'Almuerzo'),
+        ('rest', 'Descanso general'),
+        ('medical', 'Médico'),
+        ('personal', 'Personal'),
+        ('stretch', 'Estiramiento/Ejercicio'),
+    ]
+    
+    DURATION_CHOICES = [
+        (15, '15 minutos'),
+        (30, '30 minutos'),
+        (45, '45 minutos'),
+        (60, '1 hora'),
+        (90, '1 hora 30 minutos'),
+        (120, '2 horas'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('pending', 'Pendiente'),
+        ('approved', 'Aprobado'),
+        ('rejected', 'Rechazado'),
+        ('completed', 'Completado'),
+        ('cancelled', 'Cancelado'),
+    ]
+    
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='scheduled_breaks',
+        limit_choices_to={'role': 'employee'},
+        help_text="Empleado que programa el descanso"
+    )
+    
+    break_type = models.CharField(
+        'Tipo de descanso',
+        max_length=20,
+        choices=BREAK_TYPES,
+        help_text="Tipo de descanso"
+    )
+    
+    scheduled_date = models.DateField(
+        'Fecha programada',
+        help_text="Fecha del descanso"
+    )
+    
+    scheduled_time = models.TimeField(
+        'Hora programada',
+        help_text="Hora de inicio del descanso"
+    )
+    
+    duration_minutes = models.IntegerField(
+        'Duración (minutos)',
+        choices=DURATION_CHOICES,
+        default=30,
+        help_text="Duración del descanso en minutos"
+    )
+    
+    reason = models.TextField(
+        'Razón',
+        blank=True,
+        null=True,
+        help_text="Razón o motivo del descanso (opcional)"
+    )
+    
+    status = models.CharField(
+        'Estado',
+        max_length=15,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+        help_text="Estado actual del descanso programado"
+    )
+    
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_breaks',
+        help_text="Supervisor que revisó la solicitud"
+    )
+    
+    reviewed_at = models.DateTimeField(
+        'Fecha de revisión',
+        null=True,
+        blank=True,
+        help_text="Momento en que se revisó la solicitud"
+    )
+    
+    reviewer_notes = models.TextField(
+        'Notas del supervisor',
+        blank=True,
+        null=True,
+        help_text="Notas o comentarios del supervisor"
+    )
+    
+    created_at = models.DateTimeField('Fecha de creación', auto_now_add=True)
+    updated_at = models.DateTimeField('Última actualización', auto_now=True)
+    
+    class Meta:
+        db_table = 'scheduled_breaks'
+        ordering = ['scheduled_date', 'scheduled_time']
+        verbose_name = 'Descanso Programado'
+        verbose_name_plural = 'Descansos Programados'
+        indexes = [
+            models.Index(fields=['employee', '-scheduled_date']),
+            models.Index(fields=['status', 'scheduled_date']),
+            models.Index(fields=['scheduled_date', 'scheduled_time']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_break_type_display()} - {self.employee.get_full_name()} ({self.scheduled_date} {self.scheduled_time})"

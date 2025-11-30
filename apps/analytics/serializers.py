@@ -3,7 +3,7 @@ Serializers para alertas de fatiga y recomendaciones de rutinas.
 """
 
 from rest_framework import serializers
-from .models import FatigueAlert, RoutineRecommendation, SymptomReport
+from .models import FatigueAlert, RoutineRecommendation, SymptomReport, ScheduledBreak
 from apps.users.models import CustomUser
 
 class FatigueAlertListSerializer(serializers.ModelSerializer):
@@ -427,5 +427,132 @@ class SymptomReportReviewSerializer(serializers.ModelSerializer):
         instance.reviewed_at = timezone.now()
         instance.reviewed_by = self.context['request'].user
         instance.notes = validated_data.get('notes', instance.notes)
+        instance.save()
+        return instance
+
+
+# ==================== SCHEDULED BREAK SERIALIZERS ====================
+
+class ScheduledBreakCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer para crear descansos programados (empleado).
+    """
+    class Meta:
+        model = ScheduledBreak
+        fields = ['break_type', 'scheduled_date', 'scheduled_time', 'duration_minutes', 'reason']
+    
+    def validate_scheduled_date(self, value):
+        """Validar que la fecha no sea en el pasado."""
+        from datetime import date
+        if value < date.today():
+            raise serializers.ValidationError("No puedes programar un descanso en una fecha pasada.")
+        return value
+    
+    def validate(self, data):
+        """Validar fecha y hora combinadas."""
+        from datetime import datetime, date
+        scheduled_date = data.get('scheduled_date')
+        scheduled_time = data.get('scheduled_time')
+        
+        if scheduled_date and scheduled_time:
+            scheduled_datetime = datetime.combine(scheduled_date, scheduled_time)
+            if scheduled_date == date.today() and scheduled_datetime < datetime.now():
+                raise serializers.ValidationError({
+                    'scheduled_time': 'No puedes programar un descanso en una hora pasada.'
+                })
+        return data
+    
+    def create(self, validated_data):
+        # Asignar automáticamente el empleado autenticado
+        validated_data['employee'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class ScheduledBreakListSerializer(serializers.ModelSerializer):
+    """
+    Serializer para listar descansos programados.
+    """
+    employee_name = serializers.CharField(source='employee.get_full_name', read_only=True)
+    employee_email = serializers.EmailField(source='employee.email', read_only=True)
+    break_type_display = serializers.CharField(source='get_break_type_display', read_only=True)
+    duration_display = serializers.CharField(source='get_duration_minutes_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = ScheduledBreak
+        fields = [
+            'id',
+            'employee',
+            'employee_name',
+            'employee_email',
+            'break_type',
+            'break_type_display',
+            'scheduled_date',
+            'scheduled_time',
+            'duration_minutes',
+            'duration_display',
+            'reason',
+            'status',
+            'status_display',
+            'reviewed_by',
+            'reviewed_by_name',
+            'reviewed_at',
+            'reviewer_notes',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ScheduledBreakReviewSerializer(serializers.ModelSerializer):
+    """
+    Serializer para que el supervisor revise un descanso programado.
+    """
+    status = serializers.ChoiceField(choices=[('approved', 'Aprobado'), ('rejected', 'Rechazado')])
+    
+    class Meta:
+        model = ScheduledBreak
+        fields = ['status', 'reviewer_notes']
+    
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+        
+        if instance.status != 'pending':
+            raise serializers.ValidationError("Solo se pueden revisar descansos pendientes.")
+        
+        instance.status = validated_data.get('status')
+        instance.reviewed_at = timezone.now()
+        instance.reviewed_by = self.context['request'].user
+        instance.reviewer_notes = validated_data.get('reviewer_notes', instance.reviewer_notes)
+        instance.save()
+        return instance
+
+
+class ScheduledBreakUpdateStatusSerializer(serializers.ModelSerializer):
+    """
+    Serializer para que el empleado actualice el estado de su descanso.
+    """
+    status = serializers.ChoiceField(choices=[('completed', 'Completado'), ('cancelled', 'Cancelado')])
+    
+    class Meta:
+        model = ScheduledBreak
+        fields = ['status']
+    
+    def update(self, instance, validated_data):
+        new_status = validated_data.get('status')
+        
+        # Validar que el descanso sea del empleado autenticado
+        if instance.employee != self.context['request'].user:
+            raise serializers.ValidationError("No tienes permiso para modificar este descanso.")
+        
+        # Solo puede cancelar si está pendiente, o completar si está aprobado
+        if new_status == 'cancelled' and instance.status not in ['pending', 'approved']:
+            raise serializers.ValidationError("Solo puedes cancelar descansos pendientes o aprobados.")
+        
+        if new_status == 'completed' and instance.status != 'approved':
+            raise serializers.ValidationError("Solo puedes marcar como completado un descanso aprobado.")
+        
+        instance.status = new_status
         instance.save()
         return instance

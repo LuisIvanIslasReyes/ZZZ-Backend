@@ -11,7 +11,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import FatigueAlert, RoutineRecommendation, SymptomReport
+from .models import FatigueAlert, RoutineRecommendation, SymptomReport, ScheduledBreak
 from .serializers import (
     FatigueAlertListSerializer,
     FatigueAlertDetailSerializer,
@@ -26,6 +26,10 @@ from .serializers import (
     SymptomReportCreateSerializer,
     SymptomReportListSerializer,
     SymptomReportReviewSerializer,
+    ScheduledBreakCreateSerializer,
+    ScheduledBreakListSerializer,
+    ScheduledBreakReviewSerializer,
+    ScheduledBreakUpdateStatusSerializer,
 )
 from apps.users.permissions import IsAdmin, IsAdminOrSupervisor
 
@@ -672,3 +676,186 @@ class SymptomReportViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset().filter(is_reviewed=False)
         serializer = SymptomReportListSerializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class ScheduledBreakViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar descansos programados.
+    
+    Permisos:
+    - Empleado: Puede crear, ver y cancelar sus propios descansos
+    - Supervisor: Puede ver y aprobar/rechazar descansos de sus empleados
+    - Admin: Puede ver todos los descansos
+    
+    Endpoints:
+    - GET /api/scheduled-breaks/ - Listar descansos
+    - POST /api/scheduled-breaks/ - Programar descanso (empleado)
+    - GET /api/scheduled-breaks/{id}/ - Ver detalle
+    - DELETE /api/scheduled-breaks/{id}/ - Cancelar descanso (empleado)
+    - POST /api/scheduled-breaks/{id}/review/ - Aprobar/Rechazar (supervisor)
+    - POST /api/scheduled-breaks/{id}/update-status/ - Actualizar estado (empleado)
+    - GET /api/scheduled-breaks/my-breaks/ - Mis descansos (empleado)
+    - GET /api/scheduled-breaks/pending/ - Pendientes de aprobar (supervisor)
+    - GET /api/scheduled-breaks/today/ - Descansos de hoy
+    """
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['break_type', 'status', 'scheduled_date']
+    ordering_fields = ['scheduled_date', 'scheduled_time', 'created_at']
+    ordering = ['scheduled_date', 'scheduled_time']
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        if user.role == 'admin':
+            # Admin ve todos los descansos
+            return ScheduledBreak.objects.all().select_related('employee', 'reviewed_by')
+        elif user.role == 'supervisor':
+            # Supervisor ve descansos de sus empleados
+            return ScheduledBreak.objects.filter(
+                employee__supervisor=user
+            ).select_related('employee', 'reviewed_by')
+        else:
+            # Empleado solo ve sus propios descansos
+            return ScheduledBreak.objects.filter(
+                employee=user
+            ).select_related('employee', 'reviewed_by')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ScheduledBreakCreateSerializer
+        elif self.action == 'review':
+            return ScheduledBreakReviewSerializer
+        elif self.action == 'update_status':
+            return ScheduledBreakUpdateStatusSerializer
+        return ScheduledBreakListSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Programar un descanso (solo empleados)."""
+        if request.user.role != 'employee':
+            return Response(
+                {'error': 'Solo los empleados pueden programar descansos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().create(request, *args, **kwargs)
+    
+    def destroy(self, request, *args, **kwargs):
+        """Cancelar un descanso (solo si es pendiente y es del empleado)."""
+        instance = self.get_object()
+        
+        if instance.employee != request.user and request.user.role not in ['supervisor', 'admin']:
+            return Response(
+                {'error': 'No tienes permiso para cancelar este descanso'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if instance.status not in ['pending', 'approved']:
+            return Response(
+                {'error': 'Solo puedes cancelar descansos pendientes o aprobados'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        instance.status = 'cancelled'
+        instance.save()
+        return Response({'message': 'Descanso cancelado exitosamente'})
+    
+    @action(detail=True, methods=['post'], url_path='review')
+    def review(self, request, pk=None):
+        """Aprobar o rechazar un descanso (supervisor)."""
+        if request.user.role not in ['supervisor', 'admin']:
+            return Response(
+                {'error': 'Solo supervisores pueden revisar descansos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        break_instance = self.get_object()
+        
+        # Verificar que el supervisor tiene permisos sobre este empleado
+        if request.user.role == 'supervisor' and break_instance.employee.supervisor != request.user:
+            return Response(
+                {'error': 'No tienes permisos para revisar este descanso'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(break_instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        status_msg = 'aprobado' if break_instance.status == 'approved' else 'rechazado'
+        return Response({
+            'message': f'Descanso {status_msg} exitosamente',
+            'break': ScheduledBreakListSerializer(break_instance).data
+        })
+    
+    @action(detail=True, methods=['post'], url_path='update-status')
+    def update_status(self, request, pk=None):
+        """Actualizar estado del descanso (empleado marca como completado)."""
+        break_instance = self.get_object()
+        
+        if break_instance.employee != request.user:
+            return Response(
+                {'error': 'Solo puedes actualizar tus propios descansos'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(break_instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response({
+            'message': 'Estado actualizado exitosamente',
+            'break': ScheduledBreakListSerializer(break_instance).data
+        })
+    
+    @action(detail=False, methods=['get'], url_path='my-breaks')
+    def my_breaks(self, request):
+        """Obtener los descansos del empleado actual."""
+        if request.user.role != 'employee':
+            return Response(
+                {'error': 'Esta acción es solo para empleados'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        breaks = ScheduledBreak.objects.filter(employee=request.user).order_by('scheduled_date', 'scheduled_time')
+        serializer = ScheduledBreakListSerializer(breaks, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending(self, request):
+        """Obtener descansos pendientes de aprobación (supervisor)."""
+        if request.user.role not in ['supervisor', 'admin']:
+            return Response(
+                {'error': 'Solo supervisores pueden ver descansos pendientes'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        queryset = self.get_queryset().filter(status='pending')
+        serializer = ScheduledBreakListSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='today')
+    def today(self, request):
+        """Obtener descansos programados para hoy."""
+        from datetime import date
+        queryset = self.get_queryset().filter(
+            scheduled_date=date.today(),
+            status__in=['pending', 'approved']
+        )
+        serializer = ScheduledBreakListSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='upcoming')
+    def upcoming(self, request):
+        """Obtener descansos próximos (hoy y los próximos 7 días)."""
+        from datetime import date, timedelta
+        today = date.today()
+        end_date = today + timedelta(days=7)
+        
+        queryset = self.get_queryset().filter(
+            scheduled_date__gte=today,
+            scheduled_date__lte=end_date,
+            status__in=['pending', 'approved']
+        )
+        serializer = ScheduledBreakListSerializer(queryset, many=True)
+        return Response(serializer.data)
+
