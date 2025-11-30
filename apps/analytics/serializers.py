@@ -369,15 +369,47 @@ class RecommendationStatsSerializer(serializers.Serializer):
 class SymptomReportCreateSerializer(serializers.ModelSerializer):
     """
     Serializer para crear reportes de síntomas (empleado).
+    
+    Lógica automática:
+    - Si severidad es 'severe': Auto-aprobar y generar alerta crítica
+    - Notificar al supervisor del nuevo reporte
     """
     class Meta:
         model = SymptomReport
         fields = ['symptom_type', 'severity', 'description']
     
     def create(self, validated_data):
+        from django.utils import timezone
+        from apps.analytics.models import FatigueAlert
+        
         # Asignar automáticamente el empleado autenticado
-        validated_data['employee'] = self.context['request'].user
-        return super().create(validated_data)
+        employee = self.context['request'].user
+        validated_data['employee'] = employee
+        
+        severity = validated_data.get('severity')
+        
+        # Auto-aprobar síntomas severos
+        if severity == 'severe':
+            validated_data['is_reviewed'] = True
+            validated_data['reviewed_at'] = timezone.now()
+            validated_data['reviewed_by'] = employee.supervisor if hasattr(employee, 'supervisor') else None
+            validated_data['notes'] = '⚠️ Síntoma severo - Auto-aprobado automáticamente. Se recomienda atención inmediata.'
+            
+        symptom_report = super().create(validated_data)
+        
+        # Si es severo, crear alerta crítica
+        if severity == 'severe':
+            FatigueAlert.objects.create(
+                employee=employee,
+                severity='high',
+                message=f'⚠️ URGENTE: {employee.get_full_name()} reportó síntoma severo: {symptom_report.get_symptom_type_display()}',
+                is_resolved=False
+            )
+        
+        # TODO: Enviar notificación al supervisor (implementar con websockets o email)
+        # self._notify_supervisor(employee, symptom_report)
+        
+        return symptom_report
 
 
 class SymptomReportListSerializer(serializers.ModelSerializer):

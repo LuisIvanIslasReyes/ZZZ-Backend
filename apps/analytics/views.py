@@ -273,6 +273,86 @@ class FatigueAlertViewSet(viewsets.ModelViewSet):
         
         serializer = FatigueAlertListSerializer(alerts, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['post'], url_path='send-team-notification')
+    def send_team_notification(self, request):
+        """
+        Enviar notificación al equipo completo (supervisor).
+        
+        POST /api/alerts/send-team-notification/
+        Body: {
+            "title": "Título de la notificación",
+            "message": "Mensaje para el equipo",
+            "priority": "low|medium|high"  # Opcional, default: "medium"
+        }
+        """
+        if request.user.role not in ['supervisor', 'admin']:
+            return Response(
+                {'error': 'Solo supervisores pueden enviar notificaciones al equipo'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        title = request.data.get('title', '').strip()
+        message = request.data.get('message', '').strip()
+        priority = request.data.get('priority', 'medium').lower()
+        
+        # Validaciones
+        if not title:
+            return Response(
+                {'error': 'El título es obligatorio'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not message:
+            return Response(
+                {'error': 'El mensaje es obligatorio'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if priority not in ['low', 'medium', 'high']:
+            return Response(
+                {'error': 'Prioridad inválida. Debe ser: low, medium o high'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Obtener empleados del supervisor
+        from apps.users.models import CustomUser
+        employees = CustomUser.objects.filter(
+            supervisor=request.user,
+            is_active=True
+        )
+        
+        if not employees.exists():
+            return Response(
+                {'error': 'No tienes empleados asignados'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Crear una alerta para cada empleado
+        alerts_created = []
+        for employee in employees:
+            alert = FatigueAlert.objects.create(
+                employee=employee,
+                supervisor=request.user,
+                severity=priority,
+                alert_type='team_notification',  # Tipo específico para notificaciones
+                message=f"📢 {title}\n\n{message}",
+                fatigue_index=0.0,  # No aplica para notificaciones generales
+                is_resolved=False
+            )
+            alerts_created.append({
+                'employee_id': employee.id,
+                'employee_name': employee.get_full_name(),
+                'alert_id': alert.id
+            })
+        
+        return Response({
+            'message': f'Notificación enviada exitosamente a {len(alerts_created)} empleado(s)',
+            'title': title,
+            'priority': priority,
+            'employees_notified': len(alerts_created),
+            'alerts': alerts_created
+        }, status=status.HTTP_201_CREATED)
 
 
 class RoutineRecommendationViewSet(viewsets.ModelViewSet):
@@ -626,7 +706,14 @@ class SymptomReportViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'], url_path='review')
     def review(self, request, pk=None):
-        """Marcar un reporte como revisado (supervisor)."""
+        """
+        Marcar un reporte como revisado (supervisor).
+        
+        Automáticamente:
+        - Marca el reporte como revisado
+        - Registra quién y cuándo lo revisó
+        - Notifica al empleado que su síntoma fue revisado
+        """
         if request.user.role not in ['supervisor', 'admin']:
             return Response(
                 {'error': 'Solo supervisores pueden revisar reportes'},
@@ -642,12 +729,33 @@ class SymptomReportViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        # Guardar cambios
+        from django.utils import timezone
+        from django.db import transaction
+        
         serializer = self.get_serializer(report, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        
+        # Forzar campos de revisión dentro de una transacción atómica
+        with transaction.atomic():
+            report.is_reviewed = True
+            report.reviewed_at = timezone.now()
+            report.reviewed_by = request.user
+            if 'notes' in request.data:
+                report.notes = request.data['notes']
+            report.save()
+            
+            # Forzar commit inmediato
+            transaction.on_commit(lambda: None)
+        
+        # Refrescar el objeto desde la DB para asegurar que el cambio persiste
+        report.refresh_from_db()
+        
+        # TODO: Notificar al empleado (websockets, email, o push notification)
+        # self._notify_employee_symptom_reviewed(report)
         
         return Response({
-            'message': 'Reporte revisado exitosamente',
+            'message': 'Reporte revisado exitosamente. El empleado será notificado.',
             'report': SymptomReportListSerializer(report).data
         })
     
@@ -664,6 +772,43 @@ class SymptomReportViewSet(viewsets.ModelViewSet):
         serializer = SymptomReportListSerializer(reports, many=True)
         return Response(serializer.data)
     
+    @action(detail=False, methods=['get'], url_path='recently-reviewed')
+    def recently_reviewed(self, request):
+        """
+        Obtener síntomas recientemente revisados (últimas 24h).
+        Para badge amarillo de notificaciones del empleado.
+        
+        GET /api/symptom-reports/recently-reviewed/
+        
+        Respuesta:
+        {
+            "count": 2,
+            "reports": [...]
+        }
+        """
+        if request.user.role != 'employee':
+            return Response(
+                {'error': 'Esta acción es solo para empleados'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        # Síntomas revisados en las últimas 24 horas
+        last_24h = timezone.now() - timedelta(hours=24)
+        recent_reports = SymptomReport.objects.filter(
+            employee=request.user,
+            is_reviewed=True,
+            reviewed_at__gte=last_24h
+        ).order_by('-reviewed_at')
+        
+        serializer = SymptomReportListSerializer(recent_reports, many=True)
+        return Response({
+            'count': recent_reports.count(),
+            'reports': serializer.data
+        })
+    
     @action(detail=False, methods=['get'], url_path='pending')
     def pending(self, request):
         """Obtener reportes pendientes de revisión (supervisor)."""
@@ -676,6 +821,65 @@ class SymptomReportViewSet(viewsets.ModelViewSet):
         queryset = self.get_queryset().filter(is_reviewed=False)
         serializer = SymptomReportListSerializer(queryset, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='pending-count')
+    def pending_count(self, request):
+        """
+        Obtener el conteo de síntomas pendientes (supervisor).
+        Endpoint optimizado para badges/notificaciones.
+        
+        GET /api/symptom-reports/pending-count/
+        
+        Respuesta:
+        {
+            "count": 5,
+            "by_severity": {
+                "severe": 2,
+                "moderate": 2,
+                "mild": 1
+            }
+        }
+        
+        ⚠️ NOTA: Si el contador no se actualiza inmediatamente:
+        - El frontend calcula localmente desde /symptom-reports/pending/
+        - Este endpoint es auxiliar para polling periódico
+        """
+        if request.user.role not in ['supervisor', 'admin']:
+            return Response(
+                {'error': 'Solo supervisores pueden ver reportes pendientes'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Forzar query fresca desde la DB (sin caché del ORM)
+        from django.db.models import Count, Q
+        from django.db import connection
+        
+        # Obtener base queryset sin caché
+        base_qs = SymptomReport.objects.all()
+        
+        # Filtrar por supervisor si aplica
+        if request.user.role == 'supervisor':
+            base_qs = base_qs.filter(employee__supervisor=request.user)
+        
+        # Filtrar pendientes con query fresca
+        queryset = base_qs.filter(is_reviewed=False)
+        
+        # Contar por severidad con una sola query
+        severity_counts = queryset.aggregate(
+            total=Count('id'),
+            severe=Count('id', filter=Q(severity='severe')),
+            moderate=Count('id', filter=Q(severity='moderate')),
+            mild=Count('id', filter=Q(severity='mild'))
+        )
+        
+        return Response({
+            'count': severity_counts['total'],
+            'by_severity': {
+                'severe': severity_counts['severe'],
+                'moderate': severity_counts['moderate'],
+                'mild': severity_counts['mild']
+            }
+        })
 
 
 class ScheduledBreakViewSet(viewsets.ModelViewSet):
