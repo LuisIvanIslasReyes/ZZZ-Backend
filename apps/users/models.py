@@ -73,6 +73,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     phone = models.CharField('Teléfono', max_length=20, blank=True, null=True)
     department = models.CharField('Departamento', max_length=100, blank=True, null=True)
     position = models.CharField('Puesto', max_length=100, blank=True, null=True)
+    avatar = models.ImageField(
+        'Foto de perfil',
+        upload_to='avatars/',
+        blank=True,
+        null=True,
+        help_text='Foto de perfil del usuario'
+    )
     
     # Rol del usuario
     role = models.CharField(

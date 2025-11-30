@@ -266,6 +266,69 @@ class EmployeeProfileView(generics.RetrieveAPIView):
         return self.request.user
 
 
+class UploadAvatarView(APIView):
+    """
+    Vista para subir/actualizar la foto de perfil del usuario autenticado.
+    POST /api/auth/upload-avatar/
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        from rest_framework.parsers import MultiPartParser, FormParser
+        
+        user = request.user
+        avatar = request.FILES.get('avatar')
+        
+        if not avatar:
+            return Response(
+                {'error': 'No se proporcionó ninguna imagen'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar tipo de archivo
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        if avatar.content_type not in allowed_types:
+            return Response(
+                {'error': 'Tipo de archivo no permitido. Use JPG, PNG, GIF o WEBP.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar tamaño (máx 5MB)
+        if avatar.size > 5 * 1024 * 1024:
+            return Response(
+                {'error': 'La imagen no puede superar los 5MB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Eliminar avatar anterior si existe
+        if user.avatar:
+            user.avatar.delete(save=False)
+        
+        # Guardar nuevo avatar
+        user.avatar = avatar
+        user.save()
+        
+        # Construir URL del avatar
+        avatar_url = request.build_absolute_uri(user.avatar.url) if user.avatar else None
+        
+        return Response({
+            'message': 'Foto de perfil actualizada exitosamente',
+            'avatar_url': avatar_url
+        }, status=status.HTTP_200_OK)
+    
+    def delete(self, request):
+        """Eliminar foto de perfil"""
+        user = request.user
+        
+        if user.avatar:
+            user.avatar.delete(save=False)
+            user.avatar = None
+            user.save()
+            return Response({'message': 'Foto de perfil eliminada'}, status=status.HTTP_200_OK)
+        
+        return Response({'error': 'No hay foto de perfil para eliminar'}, status=status.HTTP_400_BAD_REQUEST)
+
+
 class EmployeeExportDataView(APIView):
     """
     Vista para que el empleado descargue todos sus datos en Excel.

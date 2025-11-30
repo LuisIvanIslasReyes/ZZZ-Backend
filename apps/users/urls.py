@@ -25,4 +25,7 @@ urlpatterns = [
     # ==================== Empleado ====================
     path('employee/me/', views.EmployeeProfileView.as_view(), name='employee_profile'),
     path('employee/export-my-data/', views.EmployeeExportDataView.as_view(), name='employee_export_data'),
+    
+    # ==================== Avatar/Foto de Perfil ====================
+    path('upload-avatar/', views.UploadAvatarView.as_view(), name='upload_avatar'),
 ]

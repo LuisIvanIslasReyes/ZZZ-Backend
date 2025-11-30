@@ -10,15 +10,25 @@ class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='get_full_name', read_only=True)
     role_display = serializers.CharField(source='get_role_display', read_only=True)
     company_name = serializers.CharField(source='company.name', read_only=True, allow_null=True)
+    avatar_url = serializers.SerializerMethodField()
     
     class Meta:
         model = CustomUser
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name',
             'role', 'role_display', 'company', 'company_name', 'supervisor',
+            'phone', 'department', 'position', 'avatar', 'avatar_url',
             'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+    
+    def get_avatar_url(self, obj):
+        if obj.avatar:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
+        return None
 
 
 class UserCreateSerializer(serializers.ModelSerializer):
@@ -186,6 +196,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='get_full_name', read_only=True)
     employee_id = serializers.SerializerMethodField()
     supervisor_name = serializers.SerializerMethodField()
+    avatar_url = serializers.SerializerMethodField()
     # Campos opcionales que pueden no existir en el modelo
     department = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     position = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -198,6 +209,7 @@ class EmployeeListSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'full_name', 
             'employee_id', 'role', 'supervisor', 'supervisor_name',
             'phone', 'department', 'position', 'hire_date',
+            'avatar', 'avatar_url',
             'is_active', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'employee_id', 'supervisor_name']
@@ -207,6 +219,14 @@ class EmployeeListSerializer(serializers.ModelSerializer):
         Genera un ID de empleado basado en el ID del usuario.
         """
         return f"EMP-{obj.id:04d}"
+    
+    def get_avatar_url(self, obj):
+        if obj.avatar:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
+        return None
     
     def get_supervisor_name(self, obj):
         """
