@@ -160,15 +160,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
                         "Debe asignarle un supervisor antes de crear un dispositivo."
                     })
                 
-                if not employee.company:
-                    raise ValidationError({
-                        "employee": f"El empleado '{employee.get_full_name()}' no pertenece a ninguna empresa"
-                    })
-                
+                # Company es opcional - puede ser None
                 logger.info(f"Admin {user.email} creando dispositivo para {employee.email}")
                 serializer.save(
                     supervisor=employee.supervisor,
-                    company=employee.company
+                    company=employee.company  # Puede ser None
                 )
             else:
                 raise PermissionDenied("No tienes permisos para crear dispositivos")

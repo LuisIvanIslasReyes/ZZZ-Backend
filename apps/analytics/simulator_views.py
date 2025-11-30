@@ -112,25 +112,67 @@ class SimulatorViewSet(viewsets.ModelViewSet):
         
         session = self.get_object()
         
-        if session.status != 'running':
+        # Permitir detener simuladores en 'running' o 'error'
+        if session.status not in ['running', 'error']:
             return Response(
-                {'error': 'El simulador no está en ejecución'},
+                {'error': f'El simulador no se puede detener (estado: {session.status})'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Detener simulador
-        success = simulator_manager.stop_simulator(session.id)
+        # Detener simulador si está en memoria
+        was_running = simulator_manager.stop_simulator(session.id)
+        
+        # Actualizar estado en BD independientemente
+        session.status = 'stopped'
+        session.stopped_at = timezone.now()
+        session.save()
+        
+        logger.info(f"🛑 Simulador detenido por {request.user.email}: {session.device_id} (estaba en memoria: {was_running})")
+        
+        return Response(
+            SimulatorSessionDetailSerializer(session).data,
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['post'])
+    def restart(self, request, pk=None):
+        """Reiniciar un simulador que fue detenido."""
+        if request.user.role != 'admin':
+            return Response(
+                {'error': 'Solo administradores pueden reiniciar simuladores'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        session = self.get_object()
+        
+        # Solo se pueden reiniciar simuladores detenidos o con error
+        if session.status not in ['stopped', 'error']:
+            return Response(
+                {'error': f'El simulador no se puede reiniciar (estado actual: {session.status})'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Resetear estado de la sesión
+        session.status = 'running'
+        session.started_at = timezone.now()
+        session.stopped_at = None
+        session.error_message = None
+        session.messages_sent = 0
+        session.save()
+        
+        # Iniciar simulador en thread separado
+        success = simulator_manager.start_simulator(session.id)
         
         if not success:
+            session.status = 'error'
+            session.error_message = 'No se pudo reiniciar el simulador'
+            session.save()
             return Response(
-                {'error': 'No se pudo detener el simulador'},
+                {'error': 'No se pudo reiniciar el simulador'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
         
-        # Refrescar datos
-        session.refresh_from_db()
-        
-        logger.info(f"🛑 Simulador detenido por {request.user.email}: {session.device_id}")
+        logger.info(f"🔄 Simulador reiniciado por {request.user.email}: {session.device_id}")
         
         return Response(
             SimulatorSessionDetailSerializer(session).data,
@@ -140,6 +182,8 @@ class SimulatorViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def update_config(self, request, pk=None):
         """Actualizar configuración de un simulador en ejecución."""
+        logger.info(f"📥 update_config - Usuario: {request.user.email}, Data recibida: {request.data}")
+        
         if request.user.role != 'admin':
             return Response(
                 {'error': 'Solo administradores pueden actualizar configuración'},
@@ -148,13 +192,19 @@ class SimulatorViewSet(viewsets.ModelViewSet):
         
         session = self.get_object()
         
-        if session.status != 'running':
+        # Permitir actualizar si está en 'running' o 'error' (MQTT no disponible)
+        if session.status not in ['running', 'error']:
+            logger.warning(f"⚠️  Intento de actualizar simulador no disponible. Estado: {session.status}")
             return Response(
-                {'error': 'El simulador no está en ejecución'},
+                {'error': f'El simulador no está disponible (estado: {session.status})'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         serializer = SimulatorSessionUpdateConfigSerializer(data=request.data)
+        if not serializer.is_valid():
+            logger.error(f"❌ Error de validación: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
         serializer.is_valid(raise_exception=True)
         
         # Actualizar configuración en tiempo real

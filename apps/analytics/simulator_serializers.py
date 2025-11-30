@@ -129,10 +129,20 @@ class SimulatorSessionCreateSerializer(serializers.ModelSerializer):
 class SimulatorSessionUpdateConfigSerializer(serializers.Serializer):
     """Serializer para actualizar configuración en caliente."""
     
-    activity_mode = serializers.ChoiceField(
-        choices=SimulatorSession.ACTIVITY_MODES,
-        required=False
-    )
+    # Mapeo de valores en español a inglés
+    ACTIVITY_TRANSLATION = {
+        'reposo': 'rest',
+        'ligera': 'light',
+        'moderada': 'moderate',
+        'intensa': 'intense',
+        # También aceptar valores en inglés
+        'rest': 'rest',
+        'light': 'light',
+        'moderate': 'moderate',
+        'intense': 'intense'
+    }
+    
+    activity_mode = serializers.CharField(required=False)
     fatigue_level = serializers.FloatField(
         min_value=0,
         max_value=100,
@@ -143,6 +153,26 @@ class SimulatorSessionUpdateConfigSerializer(serializers.Serializer):
         max_value=10,
         required=False
     )
+    
+    def validate_activity_mode(self, value):
+        """Traducir activity_mode de español a inglés si es necesario."""
+        if not value:
+            return value
+        
+        # Convertir a minúsculas para comparar
+        value_lower = value.lower()
+        
+        # Traducir si está en el diccionario
+        translated = self.ACTIVITY_TRANSLATION.get(value_lower)
+        
+        if not translated:
+            valid_options = list(self.ACTIVITY_TRANSLATION.keys())
+            raise serializers.ValidationError(
+                f"'{value}' no es un modo de actividad válido. "
+                f"Opciones válidas: {', '.join(valid_options)}"
+            )
+        
+        return translated
     
     def validate(self, attrs):
         if not attrs:
