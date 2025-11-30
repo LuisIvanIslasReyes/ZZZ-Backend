@@ -22,7 +22,7 @@ from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from apps.devices.views import DeviceViewSet
 from apps.sensors.views import SensorDataViewSet, ProcessedMetricsViewSet
-from apps.analytics.views import FatigueAlertViewSet, RoutineRecommendationViewSet
+from apps.analytics.views import FatigueAlertViewSet, RoutineRecommendationViewSet, SymptomReportViewSet
 from apps.analytics.dashboard_views import DashboardViewSet
 from apps.analytics.visualization_views import VisualizationViewSet
 from apps.analytics.report_views import ReportViewSet
@@ -38,6 +38,7 @@ router.register(r'sensor-data', SensorDataViewSet, basename='sensordata')
 router.register(r'processed-metrics', ProcessedMetricsViewSet, basename='processedmetrics')
 router.register(r'alerts', FatigueAlertViewSet, basename='fatiguealert')
 router.register(r'recommendations', RoutineRecommendationViewSet, basename='routinerecommendation')
+router.register(r'symptom-reports', SymptomReportViewSet, basename='symptomreport')
 router.register(r'dashboard', DashboardViewSet, basename='dashboard')
 router.register(r'visualizations', VisualizationViewSet, basename='visualization')
 router.register(r'reports', ReportsViewSet, basename='reports')

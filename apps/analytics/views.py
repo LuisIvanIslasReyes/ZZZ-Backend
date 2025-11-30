@@ -11,7 +11,7 @@ from django.utils import timezone
 from datetime import timedelta
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import FatigueAlert, RoutineRecommendation
+from .models import FatigueAlert, RoutineRecommendation, SymptomReport
 from .serializers import (
     FatigueAlertListSerializer,
     FatigueAlertDetailSerializer,
@@ -23,6 +23,9 @@ from .serializers import (
     RoutineRecommendationApplySerializer,
     AlertStatsSerializer,
     RecommendationStatsSerializer,
+    SymptomReportCreateSerializer,
+    SymptomReportListSerializer,
+    SymptomReportReviewSerializer,
 )
 from apps.users.permissions import IsAdmin, IsAdminOrSupervisor
 
@@ -560,3 +563,112 @@ class RoutineRecommendationViewSet(viewsets.ModelViewSet):
                 {'error': f'Error al analizar patrones: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class SymptomReportViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para gestionar reportes de síntomas.
+    
+    Permisos:
+    - Empleado: Puede crear y ver sus propios reportes
+    - Supervisor: Puede ver y revisar reportes de sus empleados
+    - Admin: Puede ver todos los reportes
+    
+    Endpoints:
+    - GET /api/symptom-reports/ - Listar reportes
+    - POST /api/symptom-reports/ - Crear reporte (empleado)
+    - GET /api/symptom-reports/{id}/ - Ver detalle
+    - POST /api/symptom-reports/{id}/review/ - Revisar reporte (supervisor)
+    - GET /api/symptom-reports/my-reports/ - Mis reportes (empleado)
+    """
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ['symptom_type', 'severity', 'is_reviewed']
+    ordering_fields = ['created_at', 'severity']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        user = self.request.user
+        
+        if user.role == 'admin':
+            # Admin ve todos los reportes
+            return SymptomReport.objects.all().select_related('employee', 'reviewed_by')
+        elif user.role == 'supervisor':
+            # Supervisor ve reportes de sus empleados
+            return SymptomReport.objects.filter(
+                employee__supervisor=user
+            ).select_related('employee', 'reviewed_by')
+        else:
+            # Empleado solo ve sus propios reportes
+            return SymptomReport.objects.filter(
+                employee=user
+            ).select_related('employee', 'reviewed_by')
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return SymptomReportCreateSerializer
+        elif self.action == 'review':
+            return SymptomReportReviewSerializer
+        return SymptomReportListSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Crear un reporte de síntoma (solo empleados)."""
+        if request.user.role != 'employee':
+            return Response(
+                {'error': 'Solo los empleados pueden reportar síntomas'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().create(request, *args, **kwargs)
+    
+    @action(detail=True, methods=['post'], url_path='review')
+    def review(self, request, pk=None):
+        """Marcar un reporte como revisado (supervisor)."""
+        if request.user.role not in ['supervisor', 'admin']:
+            return Response(
+                {'error': 'Solo supervisores pueden revisar reportes'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        report = self.get_object()
+        
+        # Verificar que el supervisor tiene permisos sobre este empleado
+        if request.user.role == 'supervisor' and report.employee.supervisor != request.user:
+            return Response(
+                {'error': 'No tienes permisos para revisar este reporte'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(report, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        
+        return Response({
+            'message': 'Reporte revisado exitosamente',
+            'report': SymptomReportListSerializer(report).data
+        })
+    
+    @action(detail=False, methods=['get'], url_path='my-reports')
+    def my_reports(self, request):
+        """Obtener los reportes del empleado actual."""
+        if request.user.role != 'employee':
+            return Response(
+                {'error': 'Esta acción es solo para empleados'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        reports = SymptomReport.objects.filter(employee=request.user).order_by('-created_at')
+        serializer = SymptomReportListSerializer(reports, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending(self, request):
+        """Obtener reportes pendientes de revisión (supervisor)."""
+        if request.user.role not in ['supervisor', 'admin']:
+            return Response(
+                {'error': 'Solo supervisores pueden ver reportes pendientes'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        queryset = self.get_queryset().filter(is_reviewed=False)
+        serializer = SymptomReportListSerializer(queryset, many=True)
+        return Response(serializer.data)

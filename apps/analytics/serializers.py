@@ -3,7 +3,7 @@ Serializers para alertas de fatiga y recomendaciones de rutinas.
 """
 
 from rest_framework import serializers
-from .models import FatigueAlert, RoutineRecommendation
+from .models import FatigueAlert, RoutineRecommendation, SymptomReport
 from apps.users.models import CustomUser
 
 class FatigueAlertListSerializer(serializers.ModelSerializer):
@@ -362,3 +362,70 @@ class RecommendationStatsSerializer(serializers.Serializer):
     pending = serializers.IntegerField()
     by_type = serializers.DictField()
     avg_application_time_hours = serializers.FloatField(allow_null=True)
+
+
+# ==================== SYMPTOM REPORT SERIALIZERS ====================
+
+class SymptomReportCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer para crear reportes de síntomas (empleado).
+    """
+    class Meta:
+        model = SymptomReport
+        fields = ['symptom_type', 'severity', 'description']
+    
+    def create(self, validated_data):
+        # Asignar automáticamente el empleado autenticado
+        validated_data['employee'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+class SymptomReportListSerializer(serializers.ModelSerializer):
+    """
+    Serializer para listar reportes de síntomas.
+    """
+    employee_name = serializers.CharField(source='employee.get_full_name', read_only=True)
+    employee_email = serializers.EmailField(source='employee.email', read_only=True)
+    symptom_type_display = serializers.CharField(source='get_symptom_type_display', read_only=True)
+    severity_display = serializers.CharField(source='get_severity_display', read_only=True)
+    reviewed_by_name = serializers.CharField(source='reviewed_by.get_full_name', read_only=True, allow_null=True)
+    
+    class Meta:
+        model = SymptomReport
+        fields = [
+            'id',
+            'employee',
+            'employee_name',
+            'employee_email',
+            'symptom_type',
+            'symptom_type_display',
+            'severity',
+            'severity_display',
+            'description',
+            'is_reviewed',
+            'reviewed_at',
+            'reviewed_by',
+            'reviewed_by_name',
+            'notes',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class SymptomReportReviewSerializer(serializers.ModelSerializer):
+    """
+    Serializer para que el supervisor revise un reporte de síntoma.
+    """
+    class Meta:
+        model = SymptomReport
+        fields = ['notes']
+    
+    def update(self, instance, validated_data):
+        from django.utils import timezone
+        instance.is_reviewed = True
+        instance.reviewed_at = timezone.now()
+        instance.reviewed_by = self.context['request'].user
+        instance.notes = validated_data.get('notes', instance.notes)
+        instance.save()
+        return instance

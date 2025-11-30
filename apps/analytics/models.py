@@ -191,3 +191,105 @@ class RoutineRecommendation(models.Model):
     def __str__(self):
         status = "Aplicada" if self.is_applied else "Pendiente"
         return f"{self.get_recommendation_type_display()} - {self.employee.get_full_name()} [{status}]"
+
+
+class SymptomReport(models.Model):
+    """
+    Modelo para reportes de síntomas enviados por empleados.
+    Permite a los empleados informar cómo se sienten durante su jornada.
+    """
+    SYMPTOM_TYPES = [
+        ('fatigue', 'Fatiga/Cansancio'),
+        ('headache', 'Dolor de cabeza'),
+        ('dizziness', 'Mareo'),
+        ('nausea', 'Náuseas'),
+        ('muscle_pain', 'Dolor muscular'),
+        ('eye_strain', 'Fatiga visual'),
+        ('stress', 'Estrés'),
+        ('difficulty_concentrating', 'Dificultad para concentrarse'),
+        ('shortness_of_breath', 'Dificultad para respirar'),
+        ('other', 'Otro'),
+    ]
+    
+    SEVERITY_CHOICES = [
+        ('mild', 'Leve'),
+        ('moderate', 'Moderado'),
+        ('severe', 'Severo'),
+    ]
+    
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='symptom_reports',
+        limit_choices_to={'role': 'employee'},
+        help_text="Empleado que reporta el síntoma"
+    )
+    
+    symptom_type = models.CharField(
+        'Tipo de síntoma',
+        max_length=30,
+        choices=SYMPTOM_TYPES,
+        help_text="Tipo de síntoma reportado"
+    )
+    
+    severity = models.CharField(
+        'Severidad',
+        max_length=10,
+        choices=SEVERITY_CHOICES,
+        default='mild',
+        help_text="Nivel de severidad del síntoma"
+    )
+    
+    description = models.TextField(
+        'Descripción',
+        blank=True,
+        null=True,
+        help_text="Descripción adicional del síntoma (opcional)"
+    )
+    
+    is_reviewed = models.BooleanField(
+        'Revisado',
+        default=False,
+        help_text="Si el reporte fue revisado por el supervisor"
+    )
+    
+    reviewed_at = models.DateTimeField(
+        'Fecha de revisión',
+        null=True,
+        blank=True,
+        help_text="Momento en que se revisó el reporte"
+    )
+    
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_symptom_reports',
+        help_text="Usuario que revisó el reporte"
+    )
+    
+    notes = models.TextField(
+        'Notas del supervisor',
+        blank=True,
+        null=True,
+        help_text="Notas o comentarios del supervisor"
+    )
+    
+    created_at = models.DateTimeField('Fecha de reporte', auto_now_add=True)
+    updated_at = models.DateTimeField('Última actualización', auto_now=True)
+    
+    class Meta:
+        db_table = 'symptom_reports'
+        ordering = ['-created_at']
+        verbose_name = 'Reporte de Síntoma'
+        verbose_name_plural = 'Reportes de Síntomas'
+        indexes = [
+            models.Index(fields=['employee', '-created_at']),
+            models.Index(fields=['symptom_type', '-created_at']),
+            models.Index(fields=['severity', '-created_at']),
+            models.Index(fields=['is_reviewed', '-created_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.get_symptom_type_display()} ({self.get_severity_display()}) - {self.employee.get_full_name()}"
