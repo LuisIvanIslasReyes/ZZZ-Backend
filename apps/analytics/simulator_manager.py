@@ -113,17 +113,18 @@ class ESP32SimulatorThread:
             while self.running:
                 cycle_count += 1
                 
+                # Guardar datos de sensores en BD (SIEMPRE para gráficas)
+                self._save_sensor_data()
+                self.messages_sent += 1
+                
                 # Publicar a MQTT solo si está disponible
                 if mqtt_available and self.client and self.client.is_connected():
                     self._publish_sensor_data()
-                else:
-                    # Sin MQTT: solo incrementar contador de mensajes simulados
-                    self.messages_sent += 1
                 
                 # Actualizar estado interno (siempre)
                 self._update_state()
                 
-                # Actualizar BD cada 5 ciclos (cada ~25 segundos con interval=5)
+                # Actualizar estadísticas de sesión cada 5 ciclos (cada ~25 segundos)
                 if cycle_count % 5 == 0:
                     self._update_session_stats()
                 
@@ -257,6 +258,34 @@ class ESP32SimulatorThread:
             weights = [0.3, 0.4, 0.2, 0.1]
             self.activity_mode = random.choices(activities, weights=weights)[0]
             logger.info(f"🔄 [{self.device_id}] Actividad: {self.activity_mode}, Fatiga: {self.fatigue_level:.1f}%")
+    
+    def _save_sensor_data(self):
+        """Guarda los datos de sensores en la BD para gráficas."""
+        try:
+            from apps.sensors.models import SensorData
+            from apps.devices.models import Device
+            
+            # Obtener el dispositivo
+            device = Device.objects.get(device_identifier=self.device_id)
+            
+            # Calcular datos del sensor
+            hr = self._calculate_heart_rate()
+            spo2 = self._calculate_spo2()
+            accel = self._calculate_acceleration()
+            
+            # Crear registro en SensorData
+            SensorData.objects.create(
+                device=device,
+                timestamp=timezone.now(),
+                heart_rate=hr,
+                spo2=spo2,
+                accel_x=accel['x'],
+                accel_y=accel['y'],
+                accel_z=accel['z']
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ [{self.device_id}] Error guardando datos de sensor: {e}")
     
     def _update_session_stats(self):
         """Actualiza estadísticas en la BD."""
