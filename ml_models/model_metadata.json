@@ -32,7 +32,7 @@
     "0": 50.27488277392338,
     "1": 60.786981132075475
   },
-  "training_date": "2025-11-29T19:53:07.972090",
+  "training_date": "2025-11-29T21:07:23.584778",
   "model_path": "ml_models/fatigue_model.pkl",
   "cluster_distribution": {
     "cluster_0": 21332,
