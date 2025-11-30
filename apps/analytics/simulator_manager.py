@@ -77,38 +77,70 @@ class ESP32SimulatorThread:
     
     def _run(self):
         """Loop principal del simulador."""
+        mqtt_available = False
+        
         try:
-            # Conectar MQTT
-            self.client = mqtt.Client(client_id=f"{self.device_id}_sim")
-            self.client.on_connect = self._on_connect
-            self.client.on_disconnect = self._on_disconnect
+            # Intentar conectar MQTT (puede fallar si Mosquitto no está corriendo)
+            try:
+                self.client = mqtt.Client(client_id=f"{self.device_id}_sim")
+                self.client.on_connect = self._on_connect
+                self.client.on_disconnect = self._on_disconnect
+                
+                logger.info(f"[{self.device_id}] Conectando a {self.broker}:{self.port}")
+                self.client.connect(self.broker, self.port, 60)
+                self.client.loop_start()
+                
+                # Esperar conexión
+                timeout = 10
+                while not self.client.is_connected() and timeout > 0:
+                    time.sleep(0.5)
+                    timeout -= 0.5
+                
+                if self.client.is_connected():
+                    mqtt_available = True
+                    logger.info(f"✅ [{self.device_id}] MQTT conectado - Modo completo")
+                else:
+                    logger.warning(f"⚠️  [{self.device_id}] MQTT timeout - Modo local")
+                    
+            except Exception as mqtt_error:
+                logger.warning(f"⚠️  [{self.device_id}] MQTT no disponible: {mqtt_error} - Modo local")
+                self.client = None
             
-            logger.info(f"[{self.device_id}] Conectando a {self.broker}:{self.port}")
-            self.client.connect(self.broker, self.port, 60)
-            self.client.loop_start()
+            # Loop de simulación (continúa incluso sin MQTT)
+            logger.info(f"🔄 [{self.device_id}] Iniciando loop de simulación...")
+            cycle_count = 0
             
-            # Esperar conexión
-            timeout = 10
-            while not self.client.is_connected() and timeout > 0:
-                time.sleep(0.5)
-                timeout -= 0.5
-            
-            if not self.client.is_connected():
-                raise Exception("No se pudo conectar al broker MQTT")
-            
-            # Loop de publicación
             while self.running:
-                self._publish_sensor_data()
+                cycle_count += 1
+                
+                # Publicar a MQTT solo si está disponible
+                if mqtt_available and self.client and self.client.is_connected():
+                    self._publish_sensor_data()
+                else:
+                    # Sin MQTT: solo incrementar contador de mensajes simulados
+                    self.messages_sent += 1
+                
+                # Actualizar estado interno (siempre)
                 self._update_state()
+                
+                # Actualizar BD cada 5 ciclos (cada ~25 segundos con interval=5)
+                if cycle_count % 5 == 0:
+                    self._update_session_stats()
+                
                 time.sleep(self.publish_interval)
             
+            logger.info(f"✅ [{self.device_id}] Loop de simulación finalizado correctamente")
+            
         except Exception as e:
-            logger.error(f"❌ [{self.device_id}] Error: {e}")
+            logger.error(f"❌ [{self.device_id}] Error crítico en simulación: {e}")
             self._update_session_error(str(e))
         finally:
             if self.client:
-                self.client.loop_stop()
-                self.client.disconnect()
+                try:
+                    self.client.loop_stop()
+                    self.client.disconnect()
+                except:
+                    pass
     
     def _on_connect(self, client, userdata, flags, rc):
         if rc == 0:
@@ -235,6 +267,10 @@ class ESP32SimulatorThread:
             session.current_fatigue = self.fatigue_level
             session.activity_mode = self.activity_mode
             session.save(update_fields=['messages_sent', 'current_fatigue', 'activity_mode', 'updated_at'])
+            
+            # Log cada 5 actualizaciones para no saturar
+            if self.messages_sent % 25 == 0:
+                logger.info(f"📊 [{self.device_id}] Stats → Mensajes: {self.messages_sent}, Fatiga: {self.fatigue_level:.1f}%, Actividad: {self.activity_mode}")
         except Exception as e:
             logger.error(f"Error actualizando sesión {self.session_id}: {e}")
     
@@ -275,6 +311,34 @@ class SimulatorManager:
         self.simulators = {}  # session_id -> ESP32SimulatorThread
         self._initialized = True
         logger.info("✅ SimulatorManager inicializado")
+        
+        # Recuperar simuladores que estaban corriendo
+        self._recover_running_simulators()
+    
+    def _recover_running_simulators(self):
+        """Recupera simuladores que estaban en 'running' cuando el servidor se reinició."""
+        try:
+            running_sessions = SimulatorSession.objects.filter(status='running')
+            
+            if running_sessions.count() > 0:
+                logger.info(f"🔄 Recuperando {running_sessions.count()} simuladores...")
+                
+                for session in running_sessions:
+                    try:
+                        config = session.get_config_dict()
+                        simulator = ESP32SimulatorThread(session.id, config)
+                        
+                        if simulator.start():
+                            self.simulators[session.id] = simulator
+                            logger.info(f"✅ Simulador recuperado: {session.device_id}")
+                        else:
+                            logger.warning(f"⚠️  No se pudo recuperar: {session.device_id}")
+                    except Exception as e:
+                        logger.error(f"❌ Error recuperando {session.device_id}: {e}")
+                        
+                logger.info(f"✅ Recuperación completa: {len(self.simulators)} simuladores activos")
+        except Exception as e:
+            logger.error(f"❌ Error en recuperación de simuladores: {e}")
     
     def start_simulator(self, session_id):
         """
@@ -367,17 +431,27 @@ class SimulatorManager:
         return list(self.simulators.keys())
     
     def get_simulator_stats(self, session_id):
-        """Obtiene estadísticas de un simulador."""
+        """Obtiene estadísticas en tiempo real de un simulador."""
         if session_id not in self.simulators:
             return None
         
         simulator = self.simulators[session_id]
+        
+        # Calcular valores en tiempo real
+        hr = simulator._calculate_heart_rate()
+        spo2 = simulator._calculate_spo2()
+        accel = simulator._calculate_acceleration()
+        
         return {
             'device_id': simulator.device_id,
             'running': simulator.running,
             'messages_sent': simulator.messages_sent,
-            'current_fatigue': round(simulator.fatigue_level, 1),
+            'fatigue_level': round(simulator.fatigue_level, 1),
+            'current_fatigue': round(simulator.fatigue_level, 1),  # Mantener compatibilidad
             'activity_mode': simulator.activity_mode,
+            'heart_rate': hr,
+            'spo2': spo2,
+            'acceleration': accel,
         }
     
     def update_simulator_config(self, session_id, config):

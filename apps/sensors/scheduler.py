@@ -84,8 +84,17 @@ def start_scheduler():
     Inicia el scheduler de procesamiento automático.
     """
     try:
-        scheduler = BackgroundScheduler(timezone=timezone.get_current_timezone())
-        scheduler.add_jobstore(DjangoJobStore(), "default")
+        from apscheduler.jobstores.memory import MemoryJobStore
+        
+        # Usar MemoryJobStore en lugar de DjangoJobStore para evitar warnings
+        jobstores = {
+            'default': MemoryJobStore()
+        }
+        
+        scheduler = BackgroundScheduler(
+            timezone=timezone.get_current_timezone(),
+            jobstores=jobstores
+        )
         
         # Job 1: Procesar métricas cada 2 minutos
         scheduler.add_job(

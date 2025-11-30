@@ -94,7 +94,13 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
     """
     Serializer para crear dispositivos.
     Valida que el empleado y supervisor sean válidos.
+    El campo supervisor es opcional - se asigna automáticamente en el view.
     """
+    supervisor = serializers.PrimaryKeyRelatedField(
+        queryset=CustomUser.objects.filter(role='supervisor'),
+        required=False,
+        allow_null=True
+    )
     
     class Meta:
         model = Device
@@ -119,23 +125,32 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "El usuario debe tener rol de 'Empleado'"
             )
+        
+        # Validar que el empleado tenga un dispositivo disponible
+        existing_device = Device.objects.filter(employee=value).first()
+        if existing_device:
+            raise serializers.ValidationError(
+                f"El empleado '{value.get_full_name()}' ya tiene un dispositivo asignado: {existing_device.device_identifier}"
+            )
+        
         return value
     
     def validate_supervisor(self, value):
-        """Validar que el usuario sea un supervisor."""
-        if value.role != 'supervisor':
+        """Validar que el usuario sea un supervisor (si se proporciona)."""
+        if value and value.role != 'supervisor':
             raise serializers.ValidationError(
                 "El usuario debe tener rol de 'Supervisor'"
             )
         return value
     
     def validate(self, data):
-        """Validar que el empleado pertenezca al supervisor."""
+        """Validar que el empleado pertenezca al supervisor (si se proporciona)."""
         employee = data.get('employee')
         supervisor = data.get('supervisor')
         
+        # Si se proporciona un supervisor, validar que coincida con el del empleado
         if employee and supervisor:
-            if employee.supervisor != supervisor:
+            if employee.supervisor and employee.supervisor != supervisor:
                 raise serializers.ValidationError(
                     f"El empleado '{employee.get_full_name()}' no pertenece al "
                     f"supervisor '{supervisor.get_full_name()}'"
