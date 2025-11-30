@@ -612,6 +612,162 @@ const formatDate = (dateStr) => {
 
 ---
 
+## 🚨 Troubleshooting: "Error al cargar modelo"
+
+### ⚠️ Problema: Sale error al cargar el modelo
+
+**Síntoma:** El endpoint `/api/ml/model-info/` devuelve `model_exists: false` o error 500.
+
+**Causa:** El archivo del modelo (`ml_models/fatigue_model.pkl`) **NO está en git** (no se sube al repo).
+
+---
+
+### ✅ Solución: Entrenar el modelo
+
+**Método 1 - Rápido (1-2 minutos):**
+```bash
+# Asegúrate de tener datos en la BD (mínimo 100 métricas)
+python train_simple_model.py
+```
+
+**Método 2 - Desde Django admin (si hay datos):**
+```bash
+python manage.py retrain_model
+```
+
+**Método 3 - Con botón del frontend (cuando esté implementado):**
+- Abrir `/dashboard/machine-learning`
+- Click en "Re-entrenar Ahora"
+
+---
+
+### 🔍 Verificar si hay datos suficientes
+
+```bash
+python manage.py shell
+```
+
+```python
+from apps.sensors.models import ProcessedMetrics
+print(f"Métricas disponibles: {ProcessedMetrics.objects.count()}")
+# Necesitas mínimo 100
+```
+
+---
+
+### 📦 Si NO hay datos (repo recién clonado)
+
+**Opción A - Generar datos históricos:**
+```bash
+python UTILS\generate_historical_data.py
+```
+
+**Opción B - Iniciar simuladores y esperar:**
+```bash
+# Terminal 1
+python manage.py runserver
+
+# Terminal 2
+python UTILS\start_simulator.bat
+
+# Esperar 5-10 minutos, luego entrenar
+python train_simple_model.py
+```
+
+**Opción C - Copiar modelo de otro dev (más rápido):**
+Si otro desarrollador ya tiene el modelo, puede compartir:
+- `ml_models/fatigue_model.pkl` (87 KB)
+- `ml_models/model_metadata.json` (2 KB)
+
+Copiar esos 2 archivos en la misma ruta.
+
+---
+
+### 🎨 Cómo el Frontend debe manejar el error
+
+**Estado 1: Sin modelo entrenado**
+```jsx
+{!modelInfo?.model_exists ? (
+  <div className="alert alert-warning">
+    <h3>⚠️ Modelo no entrenado</h3>
+    <p>El modelo de Machine Learning aún no ha sido entrenado.</p>
+    
+    <div className="info-box">
+      <p><strong>Datos disponibles:</strong> {retrainingStatus?.available_metrics || 0} métricas</p>
+      <p><strong>Mínimo necesario:</strong> {retrainingStatus?.min_required || 100} métricas</p>
+      
+      {retrainingStatus?.available_metrics < retrainingStatus?.min_required ? (
+        <p className="text-warning">
+          ⏳ Esperando más datos... ({Math.round((retrainingStatus?.available_metrics / retrainingStatus?.min_required) * 100)}%)
+        </p>
+      ) : (
+        <p className="text-success">✅ Suficientes datos para entrenar</p>
+      )}
+    </div>
+    
+    {retrainingStatus?.can_retrain && (
+      <button onClick={handleRetrain} className="btn btn-primary">
+        🚀 Entrenar Modelo Ahora
+      </button>
+    )}
+    
+    <details className="mt-3">
+      <summary>Instrucciones para desarrolladores</summary>
+      <ol>
+        <li>Asegúrate que los simuladores estén corriendo</li>
+        <li>Espera a tener mínimo 100 métricas procesadas</li>
+        <li>Ejecuta: <code>python train_simple_model.py</code></li>
+      </ol>
+    </details>
+  </div>
+) : (
+  // Mostrar info normal del modelo
+  <ModelInfoCards data={modelInfo} />
+)}
+```
+
+**Estado 2: Error 500 (otro problema)**
+```jsx
+{error && (
+  <div className="alert alert-error">
+    <h3>❌ Error al cargar información ML</h3>
+    <p>{error.message || 'Error desconocido'}</p>
+    <button onClick={loadData}>🔄 Reintentar</button>
+  </div>
+)}
+```
+
+---
+
+### 📋 Checklist para nuevo desarrollador
+
+Cuando alguien clone el repo por primera vez:
+
+```bash
+# 1. Instalar dependencias
+pip install -r requirements.txt
+
+# 2. Migrar BD
+python manage.py migrate
+
+# 3. Crear superusuario
+python manage.py createsuperuser
+
+# 4. Iniciar servidor
+python manage.py runserver
+
+# 5. En otra terminal: Generar datos
+python UTILS\generate_historical_data.py
+
+# 6. Entrenar modelo
+python train_simple_model.py
+
+# 7. Verificar
+python SCRIPTS\TEST\test_ml_endpoints.py
+```
+
+**Tiempo total:** ~5 minutos
+
 ---
 
 ## 📸 Ubicación de las Imágenes
