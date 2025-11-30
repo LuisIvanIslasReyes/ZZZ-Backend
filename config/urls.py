@@ -34,6 +34,15 @@ from apps.analytics.ml_views import (
     MLRetrainingView, 
     MLPredictionHistoryView
 )
+from apps.analytics.supervisor_dashboard_views import (
+    SupervisorTeamStatsView,
+    SupervisorFatigueTrendsView,
+    SupervisorEmployeeRiskDistributionView,
+    SupervisorActivityVsFatigueView,
+    SupervisorWorkingHoursView,
+    SupervisorBreaksSummaryView,
+    SupervisorAlertsTimelineView
+)
 from apps.users.admin_views import AdminViewSet
 from apps.users.views import EmployeeListCreateView, EmployeeDetailView
 
@@ -66,6 +75,15 @@ urlpatterns = [
     path('api/ml/statistics/', MLStatisticsView.as_view(), name='ml_statistics'),
     path('api/ml/retraining/', MLRetrainingView.as_view(), name='ml_retraining'),
     path('api/ml/predictions/history/', MLPredictionHistoryView.as_view(), name='ml_prediction_history'),
+    
+    # Rutas de Dashboard del Supervisor
+    path('api/supervisor/team-stats/', SupervisorTeamStatsView.as_view(), name='supervisor_team_stats'),
+    path('api/supervisor/fatigue-trends/', SupervisorFatigueTrendsView.as_view(), name='supervisor_fatigue_trends'),
+    path('api/supervisor/risk-distribution/', SupervisorEmployeeRiskDistributionView.as_view(), name='supervisor_risk_distribution'),
+    path('api/supervisor/activity-vs-fatigue/', SupervisorActivityVsFatigueView.as_view(), name='supervisor_activity_fatigue'),
+    path('api/supervisor/working-hours/', SupervisorWorkingHoursView.as_view(), name='supervisor_working_hours'),
+    path('api/supervisor/breaks-summary/', SupervisorBreaksSummaryView.as_view(), name='supervisor_breaks_summary'),
+    path('api/supervisor/alerts-timeline/', SupervisorAlertsTimelineView.as_view(), name='supervisor_alerts_timeline'),
     
     path('api/', include(router.urls)),
     
