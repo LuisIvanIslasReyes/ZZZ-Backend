@@ -278,8 +278,18 @@ print()
 print("💾 7. GUARDANDO MODELO Y CONFIGURACIÓN")
 print("-" * 80)
 
-# Cargar scaler config
-scaler_data = joblib.load('notebooks/scaler_config.pkl')
+# Cargar o crear scaler config
+try:
+    scaler_data = joblib.load('notebooks/scaler_config.pkl')
+    print("✅ Configuración del scaler cargada")
+except FileNotFoundError:
+    print("⚠️  scaler_config.pkl no encontrado, usando configuración básica")
+    from sklearn.preprocessing import StandardScaler
+    scaler_data = {
+        'scaler': StandardScaler(),
+        'feature_names': feature_names,
+        'selected_features': feature_names
+    }
 
 # Crear directorio para modelos
 os.makedirs('ml_models', exist_ok=True)

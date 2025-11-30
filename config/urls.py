@@ -28,6 +28,12 @@ from apps.analytics.visualization_views import VisualizationViewSet
 from apps.analytics.report_views import ReportViewSet
 from apps.analytics.reports_views import ReportsViewSet
 from apps.analytics.simulator_views import SimulatorViewSet
+from apps.analytics.ml_views import (
+    MLModelInfoView, 
+    MLStatisticsView, 
+    MLRetrainingView, 
+    MLPredictionHistoryView
+)
 from apps.users.admin_views import AdminViewSet
 from apps.users.views import EmployeeListCreateView, EmployeeDetailView
 
@@ -54,6 +60,13 @@ urlpatterns = [
     # Rutas adicionales para compatibilidad con el frontend
     path('api/supervisor/employees/', EmployeeListCreateView.as_view(), name='employee_list_create_api'),
     path('api/supervisor/employees/<int:pk>/', EmployeeDetailView.as_view(), name='employee_detail_api'),
+    
+    # Rutas de Machine Learning Dashboard
+    path('api/ml/model-info/', MLModelInfoView.as_view(), name='ml_model_info'),
+    path('api/ml/statistics/', MLStatisticsView.as_view(), name='ml_statistics'),
+    path('api/ml/retraining/', MLRetrainingView.as_view(), name='ml_retraining'),
+    path('api/ml/predictions/history/', MLPredictionHistoryView.as_view(), name='ml_prediction_history'),
+    
     path('api/', include(router.urls)),
     
     # OpenAPI/Swagger Documentation
@@ -65,3 +78,7 @@ urlpatterns = [
 # Servir archivos media en desarrollo
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # Servir visualizaciones ML desde notebooks/
+    from pathlib import Path
+    notebooks_dir = Path(settings.BASE_DIR) / 'notebooks'
+    urlpatterns += static('/media/ml_visualizations/', document_root=notebooks_dir)

@@ -1,37 +1,41 @@
 {
-  "kmeans": {
-    "n_clusters": 2,
-    "silhouette_score": 0.9262390068468075,
-    "davies_bouldin_index": 0.48425508816107266,
-    "calinski_harabasz_index": 21980.119967567945,
-    "cluster_distribution": {
-      "0": 21332,
-      "1": 106
-    },
-    "cluster_fatigue_map": {
-      "0": 50.27488277392338,
-      "1": 60.786981132075475
-    }
+  "model_type": "kmeans",
+  "algorithm": "K-Means",
+  "n_clusters": 2,
+  "training_samples": 21438,
+  "features_count": 10,
+  "features": [
+    "movement_variance",
+    "activity_normalized",
+    "spo2_variance",
+    "hrv_sdnn",
+    "desaturation_count",
+    "activity_level",
+    "hrv_rmssd",
+    "movement_entropy",
+    "hrv_ratio",
+    "hr_activity_ratio"
+  ],
+  "selected_features": [
+    "movement_variance",
+    "activity_normalized",
+    "spo2_variance",
+    "hrv_sdnn",
+    "desaturation_count",
+    "activity_level",
+    "hrv_rmssd",
+    "movement_entropy",
+    "hrv_ratio",
+    "hr_activity_ratio"
+  ],
+  "cluster_fatigue_map": {
+    "0": 50.27488277392338,
+    "1": 60.786981132075475
   },
-  "dbscan": {
-    "n_clusters": 5,
-    "n_noise": 1145,
-    "eps": 0.5447396749992389
-  },
-  "data": {
-    "n_samples": 21438,
-    "n_features": 10,
-    "selected_features": [
-      "movement_variance",
-      "activity_normalized",
-      "spo2_variance",
-      "hrv_sdnn",
-      "desaturation_count",
-      "activity_level",
-      "hrv_rmssd",
-      "movement_entropy",
-      "hrv_ratio",
-      "hr_activity_ratio"
-    ]
+  "training_date": "2025-11-29T19:53:07.972090",
+  "model_path": "ml_models/fatigue_model.pkl",
+  "cluster_distribution": {
+    "cluster_0": 21332,
+    "cluster_1": 106
   }
 }

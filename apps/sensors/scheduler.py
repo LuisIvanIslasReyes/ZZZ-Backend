@@ -79,6 +79,78 @@ def cleanup_old_executions():
         logger.error(f"❌ Error limpiando ejecuciones: {e}")
 
 
+@util.close_old_connections
+def retrain_ml_model_job():
+    """
+    Job que re-entrena el modelo ML con datos acumulados.
+    Se ejecuta semanalmente para mejorar precisión.
+    """
+    try:
+        import os
+        import subprocess
+        from pathlib import Path
+        from django.conf import settings
+        from apps.sensors.models import ProcessedMetrics
+        
+        logger.info("🤖 Iniciando re-entrenamiento del modelo ML...")
+        
+        # 1. Verificar que haya suficientes datos nuevos
+        metrics_count = ProcessedMetrics.objects.count()
+        min_required = 100  # Mínimo de métricas para re-entrenar
+        
+        if metrics_count < min_required:
+            logger.info(f"⏭️  Re-entrenamiento omitido: solo {metrics_count} métricas (mínimo {min_required})")
+            return
+        
+        logger.info(f"📊 Datos disponibles: {metrics_count} métricas procesadas")
+        
+        # 2. Exportar datos a CSV (si no existe el script, usar datos existentes)
+        base_dir = Path(settings.BASE_DIR)
+        training_script = base_dir / 'train_simple_model.py'
+        
+        if not training_script.exists():
+            logger.error(f"❌ Script de entrenamiento no encontrado: {training_script}")
+            return
+        
+        # 3. Ejecutar script de entrenamiento
+        logger.info("⚙️  Ejecutando entrenamiento...")
+        
+        # Usar el Python del virtual environment
+        python_executable = os.path.join(base_dir, 'venv', 'Scripts', 'python.exe')
+        if not os.path.exists(python_executable):
+            python_executable = 'python'  # Fallback
+        
+        result = subprocess.run(
+            [python_executable, str(training_script)],
+            cwd=str(base_dir),
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minutos máximo
+        )
+        
+        # 4. Verificar resultado
+        if result.returncode == 0:
+            logger.info("✅ Modelo ML re-entrenado exitosamente")
+            logger.debug(f"Salida: {result.stdout[:500]}")  # Primeros 500 caracteres
+            
+            # 5. Recargar modelo en memoria
+            try:
+                from apps.analytics.ml_service import ml_service
+                if ml_service.load_model():
+                    logger.info("✅ Modelo recargado en memoria")
+                else:
+                    logger.warning("⚠️  Modelo re-entrenado pero no se pudo recargar")
+            except Exception as e:
+                logger.error(f"❌ Error recargando modelo: {e}")
+        else:
+            logger.error(f"❌ Error en re-entrenamiento: {result.stderr[:500]}")
+            
+    except subprocess.TimeoutExpired:
+        logger.error("❌ Re-entrenamiento cancelado: timeout de 5 minutos")
+    except Exception as e:
+        logger.error(f"❌ Error en re-entrenamiento automático: {e}", exc_info=True)
+
+
 def start_scheduler():
     """
     Inicia el scheduler de procesamiento automático.
@@ -116,9 +188,22 @@ def start_scheduler():
             name="Limpieza de ejecuciones antiguas"
         )
         
+        # Job 3: Re-entrenar modelo ML semanalmente
+        scheduler.add_job(
+            retrain_ml_model_job,
+            trigger=IntervalTrigger(days=7),
+            id="retrain_ml_model",
+            max_instances=1,
+            replace_existing=True,
+            name="Re-entrenamiento automático del modelo ML"
+        )
+        
         # Iniciar scheduler
         scheduler.start()
-        logger.info("🚀 Scheduler de métricas iniciado (intervalo: 2min)")
+        logger.info("🚀 Scheduler iniciado:")
+        logger.info("   • Procesamiento de métricas: cada 2 minutos")
+        logger.info("   • Limpieza de logs: cada 1 día")
+        logger.info("   • Re-entrenamiento ML: cada 7 días")
         
         return scheduler
         
