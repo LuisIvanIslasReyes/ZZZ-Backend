@@ -32,7 +32,7 @@ if severity == 'severe':
 
 ---
 
-### 2️⃣ Notificación al Empleado al Revisar
+### 2️⃣ Notificación Automática al Empleado al Revisar
 
 **Archivo:** `apps/analytics/views.py` (SymptomReportViewSet.review)
 
@@ -43,14 +43,24 @@ cuando supervisor revisa:
     ✅ reviewed_at = now()
     ✅ reviewed_by = supervisor
     ✅ notes = comentario del supervisor
-    ✅ Empleado puede ver en "Mis Síntomas"
-    ✅ Badge amarillo si fue revisado en últimas 24h
+    ✅ Crea FatigueAlert notificando al empleado
+    ✅ Empleado recibe alerta en su dashboard
+    ✅ Badge amarillo en "Mis Síntomas" (últimas 24h)
+```
+
+**Notificación que recibe el empleado:**
+```
+🔔 Nueva Alerta
+✅ Tu síntoma 'Dolor de cabeza' ha sido revisado
+
+📝 Comentarios del supervisor:
+Toma un descanso de 15 minutos y bebe agua.
 ```
 
 **Mensaje al supervisor:**
 ```json
 {
-  "message": "Reporte revisado exitosamente. El empleado será notificado."
+  "message": "Reporte revisado exitosamente. El empleado ha sido notificado."
 }
 ```
 
@@ -93,10 +103,11 @@ GET /api/symptom-reports/recently-reviewed/
 ### ✅ Ya Implementado en Backend:
 
 1. ✅ Auto-aprobación de severos
-2. ✅ Notificación al empleado (datos disponibles)
+2. ✅ **Notificación automática al empleado** (crea FatigueAlert)
 3. ✅ Endpoint para badge amarillo
 4. ✅ Endpoint para contar pendientes (badge rojo)
 5. ✅ Alertas críticas automáticas
+6. ✅ **Alerta en dashboard del empleado cuando síntoma es revisado**
 
 ---
 

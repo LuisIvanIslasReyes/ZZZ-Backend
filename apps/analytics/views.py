@@ -745,17 +745,32 @@ class SymptomReportViewSet(viewsets.ModelViewSet):
                 report.notes = request.data['notes']
             report.save()
             
+            # Crear alerta de notificación para el empleado
+            supervisor_notes = request.data.get('notes', 'Sin comentarios adicionales')
+            symptom_label = dict(SymptomReport.SYMPTOM_TYPES).get(
+                report.symptom_type, 
+                report.symptom_type
+            )
+            
+            FatigueAlert.objects.create(
+                employee=report.employee,
+                supervisor=request.user,
+                severity='low',  # Notificación informativa
+                alert_type='symptom_reviewed',
+                message=f"✅ Tu síntoma '{symptom_label}' ha sido revisado\n\n"
+                        f"📝 Comentarios del supervisor:\n{supervisor_notes}",
+                fatigue_index=0.0,  # No aplica para notificaciones
+                is_resolved=False
+            )
+            
             # Forzar commit inmediato
             transaction.on_commit(lambda: None)
         
         # Refrescar el objeto desde la DB para asegurar que el cambio persiste
         report.refresh_from_db()
         
-        # TODO: Notificar al empleado (websockets, email, o push notification)
-        # self._notify_employee_symptom_reviewed(report)
-        
         return Response({
-            'message': 'Reporte revisado exitosamente. El empleado será notificado.',
+            'message': 'Reporte revisado exitosamente. El empleado ha sido notificado.',
             'report': SymptomReportListSerializer(report).data
         })
     
