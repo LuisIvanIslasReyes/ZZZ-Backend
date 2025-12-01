@@ -168,6 +168,7 @@ class DeviceUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Device
         fields = [
+            'device_identifier',
             'employee',
             'supervisor',
             'is_active',
