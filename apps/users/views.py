@@ -409,8 +409,8 @@ class EmployeeExportDataView(APIView):
                 ws_metrics.cell(row=row_idx, column=4, value=f"{metric.spo2_avg:.1f}")
                 ws_metrics.cell(row=row_idx, column=5, value=f"{metric.hrv_rmssd:.1f}" if metric.hrv_rmssd else "N/A")
                 ws_metrics.cell(row=row_idx, column=6, value=f"{metric.fatigue_index:.2f}" if metric.fatigue_index else "N/A")
-                ws_metrics.cell(row=row_idx, column=7, value=metric.get_activity_level_display() if hasattr(metric, 'activity_level') else "N/A")
-                ws_metrics.cell(row=row_idx, column=8, value="Normal")
+                ws_metrics.cell(row=row_idx, column=7, value=f"{metric.activity_level:.2f}" if metric.activity_level else "N/A")
+                ws_metrics.cell(row=row_idx, column=8, value=metric.fatigue_level if hasattr(metric, 'fatigue_level') and metric.fatigue_level else "Normal")
         else:
             ws_metrics.cell(row=3, column=1, value="Sin datos registrados aún")
             ws_metrics.cell(row=3, column=1).font = Font(italic=True, color="999999")
@@ -441,7 +441,7 @@ class EmployeeExportDataView(APIView):
                 ws_alerts.cell(row=row_idx, column=2, value=alert.alert_type)
                 ws_alerts.cell(row=row_idx, column=3, value=alert.get_severity_display())
                 ws_alerts.cell(row=row_idx, column=4, value=alert.message)
-                ws_alerts.cell(row=row_idx, column=5, value="Resuelta" if alert.resolved else "Pendiente")
+                ws_alerts.cell(row=row_idx, column=5, value="Resuelta" if alert.is_resolved else "Pendiente")
                 ws_alerts.cell(row=row_idx, column=6, value=alert.resolved_at.strftime('%Y-%m-%d %H:%M:%S') if alert.resolved_at else "N/A")
         else:
             ws_alerts.cell(row=3, column=1, value="Sin datos registrados aún")
@@ -463,7 +463,7 @@ class EmployeeExportDataView(APIView):
         recommendations = RoutineRecommendation.objects.filter(employee=user).order_by('-created_at')
         
         if recommendations.exists():
-            headers = ['Fecha', 'Tipo', 'Descripción', 'Estado', 'Aplicada']
+            headers = ['Fecha', 'Tipo', 'Descripción', 'Prioridad', 'Aplicada']
             for col_idx, header in enumerate(headers, start=1):
                 cell = ws_recs.cell(row=3, column=col_idx, value=header)
                 cell.font = Font(bold=True)
@@ -473,8 +473,8 @@ class EmployeeExportDataView(APIView):
                 ws_recs.cell(row=row_idx, column=1, value=rec.created_at.strftime('%Y-%m-%d %H:%M:%S'))
                 ws_recs.cell(row=row_idx, column=2, value=rec.get_recommendation_type_display())
                 ws_recs.cell(row=row_idx, column=3, value=rec.description)
-                ws_recs.cell(row=row_idx, column=4, value=rec.get_status_display())
-                ws_recs.cell(row=row_idx, column=5, value="Sí" if rec.applied else "No")
+                ws_recs.cell(row=row_idx, column=4, value=f"Prioridad {rec.priority}")
+                ws_recs.cell(row=row_idx, column=5, value="Sí" if rec.is_applied else "No")
         else:
             ws_recs.cell(row=3, column=1, value="Sin datos registrados aún")
             ws_recs.cell(row=3, column=1).font = Font(italic=True, color="999999")

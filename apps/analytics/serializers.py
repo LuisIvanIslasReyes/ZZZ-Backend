@@ -397,12 +397,15 @@ class SymptomReportCreateSerializer(serializers.ModelSerializer):
             
         symptom_report = super().create(validated_data)
         
-        # Si es severo, crear alerta crítica
-        if severity == 'severe':
+        # Si es severo, crear alerta crítica (solo si el empleado tiene supervisor)
+        if severity == 'severe' and hasattr(employee, 'supervisor') and employee.supervisor:
             FatigueAlert.objects.create(
                 employee=employee,
+                supervisor=employee.supervisor,
                 severity='high',
+                alert_type='symptom_report',
                 message=f'⚠️ URGENTE: {employee.get_full_name()} reportó síntoma severo: {symptom_report.get_symptom_type_display()}',
+                fatigue_index=0.0,  # No aplica para reportes de síntomas
                 is_resolved=False
             )
         
