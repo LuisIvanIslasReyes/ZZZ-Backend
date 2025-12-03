@@ -41,13 +41,14 @@ class MLModelInfoView(APIView):
                 with open(metadata_path, 'r') as f:
                     metadata = json.load(f)
             
-            # Información del servicio ML
+            # Información del servicio ML usando el método get_model_info()
+            model_info = ml_service.get_model_info()
             ml_status = {
-                'loaded': ml_service.model_loaded,
-                'type': ml_service.model_type,
-                'features_count': len(ml_service.selected_features) if ml_service.selected_features else 0,
-                'features': ml_service.selected_features if ml_service.selected_features else [],
-                'clusters': list(ml_service.cluster_fatigue_map.keys()) if ml_service.cluster_fatigue_map else []
+                'loaded': model_info.get('loaded', False),
+                'type': model_info.get('model_type', 'placeholder'),
+                'features_count': model_info.get('n_features', 0),
+                'features': model_info.get('features', []),
+                'clusters': list(model_info.get('cluster_fatigue_map', {}).keys())
             }
             
             # Tamaño del archivo

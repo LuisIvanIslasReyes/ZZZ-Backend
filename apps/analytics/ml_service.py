@@ -25,8 +25,13 @@ class FatigueMLService:
         self.model_loaded = False
         self.model_type = 'placeholder'
         
-        # NO cargar modelo automáticamente - usar placeholder
-        logger.info("✅ Servicio ML inicializado (modo placeholder)")
+        # Intentar cargar el modelo si existe
+        self.load_model()
+        
+        if not self.model_loaded:
+            logger.info("✅ Servicio ML inicializado (modo placeholder)")
+        else:
+            logger.info("✅ Servicio ML inicializado con modelo cargado")
 
     
     def load_model(self, model_path=None):
@@ -47,8 +52,7 @@ class FatigueMLService:
         
         try:
             if not os.path.exists(model_path):
-                print(f"⚠️  Modelo no encontrado en: {model_path}")
-                print("   Ejecuta: python notebooks/03_clustering_model.py")
+                logger.debug(f"Modelo no encontrado en: {model_path}")
                 self.model_loaded = False
                 return False
             
@@ -66,14 +70,14 @@ class FatigueMLService:
                 self.cluster_fatigue_map = model_package['cluster_fatigue_map']
             
             self.model_loaded = True
-            print(f"✅ Modelo ML cargado exitosamente desde: {model_path}")
-            print(f"   Tipo: {self.model_type.upper()}")
-            print(f"   Features: {len(self.selected_features)}")
+            logger.info(f"✅ Modelo ML cargado exitosamente")
+            logger.info(f"   Tipo: {self.model_type.upper()}")
+            logger.info(f"   Features: {len(self.selected_features)}")
             
             return True
             
         except Exception as e:
-            print(f"❌ Error al cargar modelo: {str(e)}")
+            logger.error(f"❌ Error al cargar modelo: {str(e)}")
             self.model_loaded = False
             return False
     
@@ -193,14 +197,39 @@ class FatigueMLService:
     def get_model_info(self):
         """
         Obtiene información sobre el modelo cargado.
+        Si el modelo no está cargado en memoria, intenta leer el metadata.json
         
         Returns:
             dict: Diccionario con información del modelo.
         """
         if not self.model_loaded:
+            # Intentar leer metadata.json si existe
+            try:
+                import json
+                base_dir = Path(settings.BASE_DIR)
+                metadata_path = base_dir / 'ml_models' / 'model_metadata.json'
+                
+                if metadata_path.exists():
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                    
+                    return {
+                        'loaded': False,
+                        'model_type': metadata.get('model_type', 'placeholder'),
+                        'n_features': metadata.get('features_count', 0),
+                        'features': metadata.get('features', []),
+                        'cluster_fatigue_map': metadata.get('cluster_fatigue_map', {}),
+                        'message': 'Modelo no cargado en memoria. Usando información del metadata.'
+                    }
+            except Exception as e:
+                logger.debug(f"No se pudo cargar metadata: {e}")
+            
             return {
                 'loaded': False,
-                'message': 'Modelo no cargado. Usando cálculo placeholder.'
+                'model_type': 'placeholder',
+                'n_features': 0,
+                'features': [],
+                'message': 'Modelo no disponible. Usando cálculo placeholder.'
             }
         
         info = {

@@ -324,3 +324,174 @@ class ActivityLogSerializer(serializers.Serializer):
                 'role': obj.user.role
             }
         return None
+
+
+class AdminUserListSerializer(serializers.ModelSerializer):
+    """
+    Serializer para listar usuarios administradores.
+    """
+    full_name = serializers.SerializerMethodField()
+    supervisors_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'first_name',
+            'last_name',
+            'full_name',
+            'is_active',
+            'is_staff',
+            'is_superuser',
+            'supervisors_count',
+            'created_at',
+            'last_login'
+        ]
+        read_only_fields = ['id', 'created_at', 'last_login']
+    
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip()
+    
+    def get_supervisors_count(self, obj):
+        """Cantidad de supervisores creados por este admin."""
+        return User.objects.filter(role='supervisor').count()
+
+
+class AdminUserDetailSerializer(serializers.ModelSerializer):
+    """
+    Serializer detallado para un administrador específico.
+    """
+    full_name = serializers.SerializerMethodField()
+    statistics = serializers.SerializerMethodField()
+    recent_activity = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = User
+        fields = [
+            'id',
+            'email',
+            'first_name',
+            'last_name',
+            'full_name',
+            'phone',
+            'avatar',
+            'is_active',
+            'is_staff',
+            'is_superuser',
+            'created_at',
+            'updated_at',
+            'last_login',
+            'statistics',
+            'recent_activity'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'last_login']
+    
+    def get_full_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip()
+    
+    def get_statistics(self, obj):
+        """Estadísticas del administrador."""
+        total_supervisors = User.objects.filter(role='supervisor').count()
+        total_employees = User.objects.filter(role='employee').count()
+        total_devices = Device.objects.count()
+        total_alerts = FatigueAlert.objects.count()
+        
+        return {
+            'supervisors_count': total_supervisors,
+            'employees_count': total_employees,
+            'devices_count': total_devices,
+            'alerts_count': total_alerts
+        }
+    
+    def get_recent_activity(self, obj):
+        """Actividad reciente del administrador."""
+        from apps.users.models import ActivityLog
+        recent_logs = ActivityLog.objects.filter(
+            user=obj
+        ).order_by('-timestamp')[:10]
+        
+        return [
+            {
+                'id': log.id,
+                'action': log.action,
+                'resource_type': log.resource_type,
+                'timestamp': log.timestamp,
+                'details': log.details
+            }
+            for log in recent_logs
+        ]
+
+
+class AdminUserCreateSerializer(serializers.ModelSerializer):
+    """
+    Serializer para crear nuevos usuarios administradores.
+    Solo superadmin puede crear otros admins.
+    """
+    password = serializers.CharField(write_only=True, min_length=8)
+    password_confirm = serializers.CharField(write_only=True, min_length=8)
+    
+    class Meta:
+        model = User
+        fields = [
+            'email',
+            'password',
+            'password_confirm',
+            'first_name',
+            'last_name',
+            'phone',
+            'is_active',
+            'is_staff',
+            'is_superuser'
+        ]
+    
+    def validate_email(self, value):
+        """Validar que el email no exista."""
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Este email ya está registrado.")
+        return value
+    
+    def validate(self, data):
+        """Validar que las contraseñas coincidan."""
+        if data['password'] != data['password_confirm']:
+            raise serializers.ValidationError({
+                'password_confirm': 'Las contraseñas no coinciden.'
+            })
+        return data
+    
+    def create(self, validated_data):
+        """Crear usuario administrador."""
+        validated_data.pop('password_confirm')
+        password = validated_data.pop('password')
+        
+        # Establecer rol de admin
+        validated_data['role'] = 'admin'
+        
+        # Crear usuario
+        user = User.objects.create(**validated_data)
+        user.set_password(password)
+        user.save()
+        
+        return user
+
+
+class AdminUserUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer para actualizar información de administradores.
+    """
+    class Meta:
+        model = User
+        fields = [
+            'first_name',
+            'last_name',
+            'phone',
+            'is_active',
+            'is_staff'
+        ]
+    
+    def update(self, instance, validated_data):
+        """Actualizar administrador."""
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save()
+        return instance

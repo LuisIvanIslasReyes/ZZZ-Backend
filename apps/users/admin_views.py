@@ -681,3 +681,196 @@ class AdminViewSet(viewsets.ViewSet):
         )
         
         return response
+    
+    @action(detail=False, methods=['get', 'post'], url_path='admin-users')
+    def manage_admin_users(self, request):
+        """
+        GET: Lista todos los usuarios administradores.
+        POST: Crea un nuevo usuario administrador.
+        
+        Solo accesible para superusuarios.
+        """
+        # Verificar que sea superusuario
+        if not request.user.is_superuser:
+            return Response(
+                {'detail': 'Solo superusuarios pueden gestionar administradores.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if request.method == 'GET':
+            # Listar administradores
+            from apps.users.admin_serializers import AdminUserListSerializer
+            
+            admins = User.objects.filter(
+                role='admin'
+            ).order_by('-created_at')
+            
+            # Filtros
+            is_active = request.query_params.get('is_active')
+            if is_active is not None:
+                is_active_bool = is_active.lower() == 'true'
+                admins = admins.filter(is_active=is_active_bool)
+            
+            search = request.query_params.get('search')
+            if search:
+                admins = admins.filter(
+                    Q(first_name__icontains=search) |
+                    Q(last_name__icontains=search) |
+                    Q(email__icontains=search)
+                )
+            
+            serializer = AdminUserListSerializer(admins, many=True)
+            
+            # Registrar actividad
+            ActivityLog.log_action(
+                user=request.user,
+                action='other',
+                resource_type='admin_user',
+                details={'action_type': 'list_admin_users'},
+                request=request
+            )
+            
+            return Response(serializer.data)
+        
+        elif request.method == 'POST':
+            # Crear administrador
+            from apps.users.admin_serializers import AdminUserCreateSerializer, AdminUserDetailSerializer
+            
+            serializer = AdminUserCreateSerializer(data=request.data)
+            
+            if serializer.is_valid():
+                admin_user = serializer.save()
+                
+                # Registrar actividad
+                ActivityLog.log_action(
+                    user=request.user,
+                    action='create',
+                    resource_type='admin_user',
+                    resource_id=admin_user.id,
+                    details={
+                        'email': admin_user.email,
+                        'name': admin_user.get_full_name()
+                    },
+                    request=request
+                )
+                
+                # Retornar datos del admin creado
+                response_serializer = AdminUserDetailSerializer(admin_user)
+                return Response(
+                    response_serializer.data,
+                    status=status.HTTP_201_CREATED
+                )
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['get', 'put', 'patch', 'delete'], url_path='admin-users')
+    def admin_user_detail(self, request, pk=None):
+        """
+        GET: Obtiene detalles de un administrador.
+        PUT/PATCH: Actualiza información de un administrador.
+        DELETE: Elimina un administrador.
+        
+        Solo accesible para superusuarios.
+        """
+        # Verificar que sea superusuario
+        if not request.user.is_superuser:
+            return Response(
+                {'detail': 'Solo superusuarios pueden gestionar administradores.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            admin_user = User.objects.get(id=pk, role='admin')
+        except User.DoesNotExist:
+            return Response(
+                {'detail': 'Administrador no encontrado.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if request.method == 'GET':
+            # Obtener detalles
+            from apps.users.admin_serializers import AdminUserDetailSerializer
+            serializer = AdminUserDetailSerializer(admin_user)
+            return Response(serializer.data)
+        
+        elif request.method in ['PUT', 'PATCH']:
+            # Actualizar administrador
+            from apps.users.admin_serializers import AdminUserUpdateSerializer, AdminUserDetailSerializer
+            
+            # No permitir que el admin se desactive a sí mismo
+            if admin_user.id == request.user.id and 'is_active' in request.data:
+                if not request.data['is_active']:
+                    return Response(
+                        {'detail': 'No puedes desactivarte a ti mismo.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            serializer = AdminUserUpdateSerializer(
+                admin_user,
+                data=request.data,
+                partial=(request.method == 'PATCH')
+            )
+            
+            if serializer.is_valid():
+                updated_admin = serializer.save()
+                
+                # Registrar actividad
+                ActivityLog.log_action(
+                    user=request.user,
+                    action='update',
+                    resource_type='admin_user',
+                    resource_id=updated_admin.id,
+                    details={
+                        'updated_fields': list(request.data.keys()),
+                        'name': updated_admin.get_full_name()
+                    },
+                    request=request
+                )
+                
+                # Retornar datos actualizados
+                response_serializer = AdminUserDetailSerializer(updated_admin)
+                return Response(response_serializer.data)
+            
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        elif request.method == 'DELETE':
+            # Eliminar administrador
+            
+            # No permitir que el admin se elimine a sí mismo
+            if admin_user.id == request.user.id:
+                return Response(
+                    {'detail': 'No puedes eliminarte a ti mismo.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Verificar que no sea el último superusuario
+            if admin_user.is_superuser:
+                superuser_count = User.objects.filter(is_superuser=True, is_active=True).count()
+                if superuser_count <= 1:
+                    return Response(
+                        {'detail': 'No puedes eliminar el último superusuario activo.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            admin_email = admin_user.email
+            admin_name = admin_user.get_full_name()
+            
+            # Registrar actividad antes de eliminar
+            ActivityLog.log_action(
+                user=request.user,
+                action='delete',
+                resource_type='admin_user',
+                resource_id=admin_user.id,
+                details={
+                    'email': admin_email,
+                    'name': admin_name
+                },
+                request=request
+            )
+            
+            admin_user.delete()
+            
+            return Response(
+                {'detail': f'Administrador {admin_name} eliminado exitosamente.'},
+                status=status.HTTP_200_OK
+            )
