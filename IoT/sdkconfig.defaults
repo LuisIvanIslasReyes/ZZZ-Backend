@@ -1,0 +1,20 @@
+# Configuración por defecto del proyecto
+
+# PSRAM deshabilitado (ESP32 sin PSRAM)
+# CONFIG_SPIRAM is not set
+
+# Configuración de Flash - 4MB
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+
+# Configuración de particiones para SPIFFS
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Tamaño de stack para tareas principales
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# Habilitar sistema de archivos SPIFFS
+CONFIG_SPIFFS_MAX_PARTITIONS=3
