@@ -326,3 +326,132 @@ class DeviceViewSet(viewsets.ModelViewSet):
         }
         
         return Response(summary)
+    
+    @action(detail=True, methods=['get'])
+    def latest_sensor_data(self, request, pk=None):
+        """
+        Obtener el último dato de sensor recibido del dispositivo.
+        Útil para monitoreo en tiempo real del ESP32.
+        INCLUYE cálculo de fatiga instantánea sin esperar procesamiento.
+        """
+        device = self.get_object()
+        
+        # Obtener el dato más reciente
+        latest_data = device.sensor_data.order_by('-timestamp').first()
+        
+        if not latest_data:
+            return Response(
+                {'error': 'No hay datos de sensor disponibles para este dispositivo'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Verificar si el dato es reciente (últimos 30 segundos)
+        time_diff = (timezone.now() - latest_data.timestamp).total_seconds()
+        is_live = time_diff < 30
+        
+        # ========== CALCULAR FATIGA CON PROMEDIO MÓVIL (últimas 15 lecturas) ==========
+        # Obtener las últimas 15 lecturas (últimos ~45 segundos con lecturas cada 3s)
+        recent_readings = device.sensor_data.filter(
+            heart_rate__gt=0  # Solo lecturas válidas
+        ).order_by('-timestamp')[:15]
+        
+        instant_fatigue = 0
+        
+        if recent_readings.exists():
+            # Calcular promedio de BPM y SpO2 de las últimas lecturas
+            readings_list = list(recent_readings)
+            avg_hr = sum(r.heart_rate for r in readings_list) / len(readings_list)
+            avg_spo2 = sum(r.spo2 for r in readings_list if r.spo2 > 0) / max(1, len([r for r in readings_list if r.spo2 > 0]))
+            
+            # Calcular fatiga base según promedio de BPM
+            if avg_hr < 80:
+                # BPM bajo: 0-10% fatiga
+                instant_fatigue = max(0, (80 - avg_hr) * 0.3)
+            elif 80 <= avg_hr < 90:
+                # BPM normal-bajo: 0-8% fatiga
+                instant_fatigue = (avg_hr - 80) * 0.8
+            elif 90 <= avg_hr < 100:
+                # BPM normal: 8-20% fatiga
+                instant_fatigue = 8 + (avg_hr - 90) * 1.2
+            elif 100 <= avg_hr < 110:
+                # BPM elevado: 20-40% fatiga
+                instant_fatigue = 20 + (avg_hr - 100) * 2.0
+            elif 110 <= avg_hr < 120:
+                # BPM alto: 40-65% fatiga
+                instant_fatigue = 40 + (avg_hr - 110) * 2.5
+            else:
+                # BPM muy alto (>120): 65-100% fatiga
+                instant_fatigue = 65 + min(35, (avg_hr - 120) * 1.5)
+            
+            # Ajustar por SpO2 bajo (solo si promedio < 95%)
+            if avg_spo2 < 95 and avg_spo2 > 0:
+                spo2_penalty = (95 - avg_spo2) * 4  # 4% por cada punto debajo de 95%
+                instant_fatigue = min(100, instant_fatigue + spo2_penalty)
+            
+            # BONUS: Incremento adicional si lleva muchas lecturas consecutivas altas
+            high_readings = [r for r in readings_list if r.heart_rate >= 110]
+            if len(high_readings) >= 10:
+                # Si 10+ de las últimas 15 están >= 110 BPM: +10% fatiga adicional
+                instant_fatigue = min(100, instant_fatigue + 10)
+            elif len(high_readings) >= 7:
+                # Si 7-9 están >= 110 BPM: +5% fatiga adicional
+                instant_fatigue = min(100, instant_fatigue + 5)
+        
+        return Response({
+            'device_id': device.device_identifier,
+            'timestamp': latest_data.timestamp,
+            'heart_rate': latest_data.heart_rate,
+            'spo2': latest_data.spo2,
+            'accel_x': latest_data.accel_x,
+            'accel_y': latest_data.accel_y,
+            'accel_z': latest_data.accel_z,
+            'instant_fatigue': round(instant_fatigue, 1),  # NUEVO: Fatiga instantánea
+            'is_live': is_live,
+            'seconds_ago': round(time_diff, 1)
+        })
+    
+    @action(detail=True, methods=['get'])
+    def sensor_history(self, request, pk=None):
+        """
+        Obtener historial de datos del sensor para gráficas.
+        Query params:
+        - hours: Número de horas hacia atrás (default: 12)
+        - limit: Máximo de registros (default: 500)
+        """
+        device = self.get_object()
+        
+        # Parámetros opcionales
+        hours = int(request.query_params.get('hours', 12))
+        limit = int(request.query_params.get('limit', 500))
+        
+        # Calcular fecha de inicio
+        end_time = timezone.now()
+        start_time = end_time - timedelta(hours=hours)
+        
+        # Obtener datos del sensor
+        sensor_data = device.sensor_data.filter(
+            timestamp__gte=start_time,
+            timestamp__lte=end_time
+        ).order_by('timestamp')[:limit]
+        
+        # Filtrar BPM = 0 y formatear datos
+        history = []
+        for data in sensor_data:
+            if data.heart_rate > 0:  # Filtrar falsos negativos
+                history.append({
+                    'timestamp': data.timestamp,
+                    'heart_rate': data.heart_rate,
+                    'spo2': data.spo2,
+                    'accel_x': data.accel_x,
+                    'accel_y': data.accel_y,
+                    'accel_z': data.accel_z,
+                })
+        
+        return Response({
+            'device_id': device.device_identifier,
+            'start_time': start_time,
+            'end_time': end_time,
+            'hours': hours,
+            'total_records': len(history),
+            'data': history
+        })

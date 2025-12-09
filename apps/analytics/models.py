@@ -413,3 +413,103 @@ class ScheduledBreak(models.Model):
     
     def __str__(self):
         return f"{self.get_break_type_display()} - {self.employee.get_full_name()} ({self.scheduled_date} {self.scheduled_time})"
+
+
+class Alert(models.Model):
+    """
+    Modelo para alertas en tiempo real del dispositivo ESP32.
+    Almacena alertas como ritmo cardíaco elevado, SpO2 bajo, etc.
+    """
+    SEVERITY_CHOICES = [
+        ('INFO', 'Información'),
+        ('WARNING', 'Advertencia'),
+        ('CRITICAL', 'Crítica'),
+    ]
+    
+    employee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='device_alerts',
+        limit_choices_to={'role': 'employee'},
+        help_text="Empleado asociado a la alerta"
+    )
+    
+    device = models.ForeignKey(
+        'devices.Device',
+        on_delete=models.CASCADE,
+        related_name='alerts',
+        help_text="Dispositivo que generó la alerta"
+    )
+    
+    alert_type = models.CharField(
+        max_length=50,
+        db_index=True,
+        help_text="Tipo de alerta (HIGH_HEART_RATE, LOW_SPO2, etc.)"
+    )
+    
+    severity = models.CharField(
+        max_length=10,
+        choices=SEVERITY_CHOICES,
+        default='WARNING',
+        db_index=True,
+        help_text="Severidad de la alerta"
+    )
+    
+    message = models.TextField(
+        help_text="Mensaje descriptivo de la alerta"
+    )
+    
+    heart_rate = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Ritmo cardíaco en el momento de la alerta (BPM)"
+    )
+    
+    spo2 = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="SpO2 en el momento de la alerta (%)"
+    )
+    
+    timestamp = models.DateTimeField(
+        db_index=True,
+        help_text="Momento en que se generó la alerta"
+    )
+    
+    is_acknowledged = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Si la alerta fue vista/reconocida"
+    )
+    
+    acknowledged_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Momento en que se reconoció la alerta"
+    )
+    
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='acknowledged_device_alerts',
+        help_text="Usuario que reconoció la alerta"
+    )
+    
+    created_at = models.DateTimeField('Fecha de creación', auto_now_add=True)
+    
+    class Meta:
+        db_table = 'device_alerts'
+        ordering = ['-timestamp']
+        verbose_name = 'Alerta de Dispositivo'
+        verbose_name_plural = 'Alertas de Dispositivos'
+        indexes = [
+            models.Index(fields=['employee', '-timestamp']),
+            models.Index(fields=['device', '-timestamp']),
+            models.Index(fields=['alert_type', '-timestamp']),
+            models.Index(fields=['is_acknowledged', '-timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.alert_type} - {self.employee.get_full_name()} ({self.timestamp})"

@@ -108,28 +108,43 @@ class FatigueMLService:
         """
         fatigue_scores = []
         
-        # Indicador 1: Ritmo cardíaco elevado
+        # Indicador 1: Ritmo cardíaco elevado (AJUSTADO - más sensible)
         hr_avg = metrics_dict.get('hr_avg', 70)
-        if hr_avg > 140:
+        
+        # FILTRO: Ignorar valores anormalmente bajos (sensor XD58C falso negativo)
+        if hr_avg < 40:
+            logger.warning(f"⚠️ HR muy bajo ({hr_avg}), posible error del sensor - usando valor por defecto")
+            hr_avg = 70  # Asumir valor normal en reposo
+        
+        if hr_avg > 120:
+            # HR muy alto (>120) = fatiga crítica
             hr_score = min(100, (hr_avg - 70) * 1.5)
-        elif hr_avg > 120:
-            hr_score = min(100, (hr_avg - 70) * 1.2)
-        elif hr_avg > 100:
+        elif hr_avg > 110:
+            # HR alto (110-120) = fatiga alta
             hr_score = min(100, (hr_avg - 70) * 1.0)
+        elif hr_avg > 100:
+            # HR elevado (100-110) = fatiga moderada
+            hr_score = min(100, (hr_avg - 70) * 0.6)
         else:
             hr_score = 0
         fatigue_scores.append(hr_score)
         
-        # Indicador 2: SpO2 bajo
+        # Indicador 2: SpO2 bajo (MENOS SENSIBLE - más realista)
         spo2_avg = metrics_dict.get('spo2_avg', 98.0)
-        if spo2_avg < 92:
-            spo2_score = (98 - spo2_avg) * 15  # Muy crítico
-        elif spo2_avg < 95:
-            spo2_score = (98 - spo2_avg) * 10
-        elif spo2_avg < 97:
-            spo2_score = (98 - spo2_avg) * 5
+        
+        # FILTRO: Ignorar valores anormalmente bajos del SpO2 (< 80 es error del sensor)
+        if spo2_avg < 80:
+            logger.warning(f"⚠️ SpO2 muy bajo ({spo2_avg}), posible error del sensor - usando valor por defecto")
+            spo2_avg = 98.0  # Asumir valor normal
+        
+        if spo2_avg < 90:
+            spo2_score = (100 - spo2_avg) * 8  # Crítico
+        elif spo2_avg < 94:
+            spo2_score = (100 - spo2_avg) * 4
+        elif spo2_avg < 96:
+            spo2_score = (100 - spo2_avg) * 2
         else:
-            spo2_score = 0
+            spo2_score = 0  # 96%+ es normal
         fatigue_scores.append(spo2_score)
         
         # Indicador 3: HRV bajo (indica estrés/fatiga)
@@ -169,20 +184,23 @@ class FatigueMLService:
             variance_score = min(100, spo2_variance * 8)
             fatigue_scores.append(variance_score)
         
-        # Calcular fatiga final usando el promedio ponderado
+        # Calcular fatiga final usando el promedio ponderado (AJUSTADO - más sensible)
         if fatigue_scores:
             # Dar más peso a los scores más altos (indicadores más críticos)
             fatigue_scores_sorted = sorted(fatigue_scores, reverse=True)
             
-            # Promedio ponderado: primer score 40%, segundo 30%, resto 30%
-            if len(fatigue_scores_sorted) >= 2:
+            # Si solo hay 1 indicador alto, darle más peso (no diluir tanto)
+            if len(fatigue_scores_sorted) == 1:
+                fatigue_index = fatigue_scores_sorted[0] * 0.85  # 85% del score
+            elif len(fatigue_scores_sorted) >= 2:
+                # Promedio ponderado: primer score 50%, segundo 35%, resto 15%
                 fatigue_index = (
-                    fatigue_scores_sorted[0] * 0.40 +
-                    fatigue_scores_sorted[1] * 0.30 +
-                    sum(fatigue_scores_sorted[2:]) / max(1, len(fatigue_scores_sorted[2:])) * 0.30
+                    fatigue_scores_sorted[0] * 0.50 +
+                    fatigue_scores_sorted[1] * 0.35 +
+                    sum(fatigue_scores_sorted[2:]) / max(1, len(fatigue_scores_sorted[2:])) * 0.15
                 )
             else:
-                fatigue_index = fatigue_scores_sorted[0]
+                fatigue_index = 0
         else:
             fatigue_index = 0
         

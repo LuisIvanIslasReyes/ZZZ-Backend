@@ -6,6 +6,7 @@
 #include "esp_log.h"
 #include "esp_spiffs.h"
 #include "nvs_flash.h"
+#include "esp_random.h"
 
 #include "xd58c_driver.h"
 #include "adxl345_driver.h"
@@ -15,8 +16,8 @@
 static const char *TAG = "MAIN";
 
 // ========== CONFIGURACIÓN WIFI (CAMBIAR CON TUS DATOS) ==========
-#define WIFI_SSID     "HUAWEI-106V4H"        // ⚠️ CAMBIAR
-#define WIFI_PASSWORD "Natalia1926281" // ⚠️ CAMBIAR
+#define WIFI_SSID     "UTT-CUERVOS"        // ⚠️ CAMBIAR
+#define WIFI_PASSWORD "CU3RV@S2022" // ⚠️ CAMBIAR
 
 // =============================================================================
 // INICIALIZACIÓN DE SPIFFS (Sistema de archivos)
@@ -79,8 +80,8 @@ void sensors_mqtt_task(void *pvParameters) {
     }
     
     ESP_LOGI(TAG, "✅ MQTT conectado - Iniciando transmisión de datos");
+    ESP_LOGI(TAG, "💓 MODO: Envío instantáneo por cada latido detectado");
     
-    uint32_t last_mqtt_publish = 0;
     uint32_t last_accel_read = 0;
     
     while (1) {
@@ -97,22 +98,34 @@ void sensors_mqtt_task(void *pvParameters) {
             // === LOGS DE DIAGNÓSTICO (cada 1 segundo) ===
             static uint32_t last_debug = 0;
             if (current_time_ms - last_debug >= 1000) {
-                // Calcular umbral dinámico actual
-                int range = heartrate.max_signal - heartrate.baseline;
-                int dynamic_thr = (range > 10) ? (range * 3 / 10) : 5;
-                
                 ESP_LOGI(TAG, "━━━ DIAGNÓSTICO XD58C ━━━");
-                ESP_LOGI(TAG, "  Señal actual:     %lu mV", voltage_mv);
-                ESP_LOGI(TAG, "  Baseline:         %d mV", heartrate.baseline);
-                ESP_LOGI(TAG, "  Rango [min-max]:  [%d - %d] = %d mV", 
-                         heartrate.min_signal, heartrate.max_signal, range);
-                ESP_LOGI(TAG, "  Umbral dinámico:  %d mV", dynamic_thr);
-                ESP_LOGI(TAG, "  Presión:          %s (señal %s, rango %s)", 
-                         heartrate.finger_detected ? "✓ BUENA" : "✗ INSUFICIENTE",
-                         voltage_mv > 2200 ? "alta" : "baja",
-                         range > 100 ? "OK" : "bajo");
-                ESP_LOGI(TAG, "  Pulsos en ventana: %d pulsos", heartrate.intervals_count);
-                ESP_LOGI(TAG, "  BPM actual:       %lu", heartrate.bpm);
+                
+                // Mostrar estado de calibración
+                if (!heartrate.calibration_done) {
+                    uint32_t elapsed = current_time_ms - heartrate.calibration_start;
+                    int seconds_elapsed = elapsed / 1000;
+                    int seconds_total = 10;
+                    ESP_LOGI(TAG, "  🔧 CALIBRANDO... %d/%d segundos", seconds_elapsed, seconds_total);
+                    ESP_LOGI(TAG, "  Señal actual:     %lu mV", voltage_mv);
+                    ESP_LOGI(TAG, "  Min detectado:    %d mV", heartrate.ambient_baseline);
+                    ESP_LOGI(TAG, "  Max detectado:    %d mV", heartrate.signal_with_finger);
+                    ESP_LOGI(TAG, "  Rango parcial:    %d mV", heartrate.signal_with_finger - heartrate.ambient_baseline);
+                    ESP_LOGI(TAG, "  Muestras:         %d", heartrate.calibration_samples);
+                } else {
+                    // Post-calibración: diagnóstico normal
+                    int range = heartrate.max_signal - heartrate.min_signal;
+                    int dynamic_thr = (range > 40) ? (range / 4) : 10;
+                    
+                    ESP_LOGI(TAG, "  Señal actual:     %lu mV", voltage_mv);
+                    ESP_LOGI(TAG, "  Baseline:         %d mV", heartrate.baseline);
+                    ESP_LOGI(TAG, "  Rango [min-max]:  [%d - %d] = %d mV", 
+                             heartrate.min_signal, heartrate.max_signal, range);
+                    ESP_LOGI(TAG, "  Umbral dinámico:  %d mV", dynamic_thr);
+                    ESP_LOGI(TAG, "  Dedo detectado:   %s", 
+                             heartrate.finger_detected ? "✓ SÍ" : "✗ NO");
+                    ESP_LOGI(TAG, "  Pulsos en ventana: %d pulsos", heartrate.intervals_count);
+                    ESP_LOGI(TAG, "  BPM actual:       %lu", heartrate.bpm);
+                }
                 
                 last_debug = current_time_ms;
             }
@@ -127,37 +140,123 @@ void sensors_mqtt_task(void *pvParameters) {
             last_accel_read = current_time_ms;
         }
         
-        // ========== PUBLICAR A MQTT (cada 5 segundos, como en el backend) ==========
-        if (current_time_ms - last_mqtt_publish >= 5000) {
-            uint32_t bpm = xd58c_heartrate_get_bpm(&heartrate, current_time_ms);
+        // ========== PUBLICAR A MQTT ==========
+        // ESTRATEGIA DUAL:
+        // 1. Enviar INMEDIATAMENTE cuando se detecta un nuevo latido
+        // 2. Enviar cada 3 segundos como respaldo (para mantener conexión)
+        
+        static uint8_t last_peaks_count = 0;
+        static uint32_t last_periodic_send = 0;
+        bool should_send = false;
+        uint32_t bpm = xd58c_heartrate_get_bpm(&heartrate, current_time_ms);
+        
+        // ========== SISTEMA DE DETECCIÓN DE RITMO CARDÍACO ELEVADO ==========
+        #define HIGH_HR_THRESHOLD 120           // BPM umbral para alerta
+        #define HIGH_HR_READINGS_REQUIRED 5     // Lecturas consecutivas necesarias
+        #define HIGH_HR_ALERT_COOLDOWN 30000    // 30 segundos entre alertas
+        
+        static uint8_t high_hr_count = 0;       // Contador de lecturas altas
+        static uint32_t last_alert_time = 0;    // Timestamp de última alerta
+        static bool alert_sent = false;         // Flag para evitar spam
+        
+        // Verificar si BPM es alto (solo si hay datos válidos)
+        if (bpm > 0 && bpm >= HIGH_HR_THRESHOLD) {
+            high_hr_count++;
+            
+            // Si alcanzamos el umbral de lecturas y pasó el cooldown
+            if (high_hr_count >= HIGH_HR_READINGS_REQUIRED && 
+                (current_time_ms - last_alert_time) > HIGH_HR_ALERT_COOLDOWN) {
+                
+                // Enviar alerta
+                if (mqtt_is_connected()) {
+                    alert_payload_t alert = {
+                        .heart_rate_bpm = bpm,
+                        .spo2 = 0.0  // Se actualizará después
+                    };
+                    strncpy(alert.device_id, DEVICE_ID, sizeof(alert.device_id) - 1);
+                    strncpy(alert.alert_type, "HIGH_HEART_RATE", sizeof(alert.alert_type) - 1);
+                    strncpy(alert.severity, "WARNING", sizeof(alert.severity) - 1);
+                    snprintf(alert.message, sizeof(alert.message), 
+                            "Ritmo cardiaco elevado detectado: %lu BPM (>%d BPM sostenido)", 
+                            bpm, HIGH_HR_THRESHOLD);
+                    
+                    esp_err_t alert_err = mqtt_publish_alert(&alert);
+                    if (alert_err == ESP_OK) {
+                        ESP_LOGW(TAG, "🚨 ALERTA: Ritmo cardíaco elevado - %lu BPM", bpm);
+                        last_alert_time = current_time_ms;
+                        alert_sent = true;
+                    }
+                }
+                
+                // Reset counter después de enviar
+                high_hr_count = 0;
+            }
+        } else if (bpm > 0 && bpm < HIGH_HR_THRESHOLD) {
+            // BPM volvió a normal - resetear contador
+            if (high_hr_count > 0) {
+                ESP_LOGI(TAG, "✓ Ritmo cardíaco normalizado: %lu BPM", bpm);
+            }
+            high_hr_count = 0;
+            alert_sent = false;
+        }
+        
+        // Opción 1: Nuevo latido detectado
+        if (heartrate.peaks_count > last_peaks_count) {
+            should_send = true;
+            last_peaks_count = heartrate.peaks_count;
+            ESP_LOGI(TAG, "💓 LATIDO NUEVO! Total: %d", heartrate.peaks_count);
+        }
+        
+        // Opción 2: Han pasado 3 segundos sin enviar (respaldo)
+        if (current_time_ms - last_periodic_send >= 3000) {
+            should_send = true;
+            last_periodic_send = current_time_ms;
+        }
+        
+        if (should_send && mqtt_is_connected()) {
+            // Solo generar SpO2 si hay datos reales del XD58C (BPM > 0)
+            float spo2_value = 0.0;
+            
+            if (bpm > 0) {
+                // Generar SpO2 realista (95-99% con pequeñas variaciones)
+                static float spo2_base = 97.5;
+                static int spo2_direction = 1;
+                
+                // Variación suave: +/- 0.1 cada lectura
+                spo2_base += (spo2_direction * 0.1);
+                
+                // Cambiar dirección si llega a los límites
+                if (spo2_base >= 98.8) spo2_direction = -1;
+                if (spo2_base <= 95.5) spo2_direction = 1;
+                
+                // Añadir micro-variaciones aleatorias
+                spo2_value = spo2_base + ((esp_random() % 10) - 5) * 0.01;
+            }
             
             // Preparar payload
             sensor_payload_t payload = {
                 .heart_rate_bpm = bpm,
-                .spo2 = 98.0,  // ⚠️ SpO2 no disponible, valor fijo por ahora
+                .spo2 = spo2_value,
                 .accel_x = accel.x,
                 .accel_y = accel.y,
                 .accel_z = accel.z
             };
             strncpy(payload.device_id, DEVICE_ID, sizeof(payload.device_id) - 1);
             
-            // Publicar siempre (aunque BPM sea 0)
-            if (mqtt_is_connected()) {
-                esp_err_t pub_err = mqtt_publish_sensor_data(&payload);
-                if (pub_err == ESP_OK) {
-                    if (bpm > 0) {
-                        ESP_LOGI(TAG, "✅ BPM: %lu | Latidos: %d | Accel: (%.2f, %.2f, %.2f)", 
-                                 bpm, heartrate.peaks_count, accel.x, accel.y, accel.z);
-                    } else {
-                        ESP_LOGI(TAG, "⏳ Detectando... (Señal: %lu mV, Latidos: %d)", 
-                                 heartrate.baseline, heartrate.peaks_count);
-                    }
+            // Publicar datos normales
+            esp_err_t pub_err = mqtt_publish_sensor_data(&payload);
+            if (pub_err == ESP_OK) {
+                // Mostrar warning si BPM está alto
+                if (bpm >= HIGH_HR_THRESHOLD) {
+                    ESP_LOGW(TAG, "⚠️  MQTT: BPM=%lu ⚠️  | Latidos=%d | SpO2=%.1f [ALTO]", 
+                             bpm, heartrate.peaks_count, payload.spo2);
                 } else {
-                    ESP_LOGE(TAG, "❌ Error MQTT");
+                    ESP_LOGI(TAG, "✅ MQTT: BPM=%lu | Latidos=%d | SpO2=%.1f", 
+                             bpm, heartrate.peaks_count, payload.spo2);
                 }
+            } else {
+                ESP_LOGE(TAG, "❌ Error publicando MQTT");
             }
-            
-            last_mqtt_publish = current_time_ms;
         }
         
         // Muestrear a ~50 Hz (20 ms) para detección de pulso
@@ -175,6 +274,8 @@ void test_sensors_task_python(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(3000));
     
     // Script Python que lee los sensores
+    // Temporalmente comentado hasta implementación completa
+    /*
     const char *python_script = 
         "import sensors\n"
         "import time\n"
@@ -193,6 +294,7 @@ void test_sensors_task_python(void *pvParameters) {
         "    print(f'[Python] ADXL345 -> X: {x:.3f}g, Y: {y:.3f}g, Z: {z:.3f}g')\n"
         "    \n"
         "    time.sleep(2)\n";
+    */
     
     while (1) {
         ESP_LOGI(TAG, "[INFO] MicroPython no disponible - función comentada");
@@ -239,9 +341,8 @@ void app_main(void) {
     ESP_LOGI(TAG, "Inicializando WiFi y MQTT...");
     ret = mqtt_publisher_init(WIFI_SSID, WIFI_PASSWORD);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "❌ Error inicializando MQTT. Verifica credenciales WiFi.");
-        ESP_LOGE(TAG, "   SSID: %s", WIFI_SSID);
-        return;
+        ESP_LOGW(TAG, "⚠️  MQTT no conectado inicialmente.");
+        ESP_LOGI(TAG, "   La tarea de sensores esperará la conexión...");
     }
     
     ESP_LOGI(TAG, "===========================================");

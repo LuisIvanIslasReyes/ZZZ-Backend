@@ -24,7 +24,8 @@ class MQTTClient:
         if rc == 0:
             self.connected = True
             client.subscribe("devices/+/sensors")
-            logger.info("✅ MQTT conectado y suscrito")
+            client.subscribe("devices/+/alerts")  # Suscribirse a alertas
+            logger.info("✅ MQTT conectado y suscrito a sensores y alertas")
         else:
             logger.error(f"❌ Error de conexión MQTT. Código: {rc}")
             self.connected = False
@@ -37,6 +38,21 @@ class MQTTClient:
     def on_message(self, client, userdata, msg):
         """
         Callback cuando llega un mensaje.
+        Maneja tanto datos de sensores como alertas.
+        """
+        try:
+            # Determinar si es un mensaje de alerta o de sensores
+            if '/alerts' in msg.topic:
+                self._handle_alert(msg)
+            else:
+                self._handle_sensor_data(msg)
+                
+        except Exception as e:
+            logger.error(f"❌ Error procesando mensaje: {e}", exc_info=True)
+    
+    def _handle_sensor_data(self, msg):
+        """
+        Procesar mensaje de datos de sensores.
         Formato esperado del mensaje JSON:
         {
             "device_id": "ESP32-001",
@@ -55,7 +71,7 @@ class MQTTClient:
             payload = json.loads(msg.payload.decode())
             device_id = payload.get('device_id')
             
-            logger.debug(f"📥 Mensaje recibido de {device_id}")
+            logger.info(f"📥 Mensaje recibido de {device_id}")
             
             # Buscar el dispositivo en la BD
             try:
@@ -67,8 +83,17 @@ class MQTTClient:
             # Parsear timestamp
             timestamp_str = payload.get('timestamp')
             if timestamp_str:
-                from dateutil import parser as date_parser
-                timestamp = date_parser.parse(timestamp_str)
+                try:
+                    from dateutil import parser as date_parser
+                    timestamp = date_parser.parse(timestamp_str)
+                    # Si el timestamp es demasiado antiguo (antes de 2020), usar ahora
+                    from datetime import datetime
+                    if timestamp.year < 2020:
+                        logger.warning(f"⚠️  Timestamp inválido ({timestamp_str}), usando timestamp actual")
+                        timestamp = timezone.now()
+                except Exception as e:
+                    logger.warning(f"⚠️  Error parseando timestamp ({timestamp_str}): {e}, usando timestamp actual")
+                    timestamp = timezone.now()
             else:
                 timestamp = timezone.now()
             
@@ -100,13 +125,73 @@ class MQTTClient:
             device.last_connection = timestamp
             device.save(update_fields=['last_connection'])
             
-            # Log más silencioso - solo debug
-            logger.debug(f"✅ {device_id}: HR={heart_rate} SpO2={spo2}%")
+            # Log de confirmación
+            logger.info(f"✅ {device_id}: HR={heart_rate} SpO2={spo2}%")
             
         except json.JSONDecodeError as e:
             logger.error(f"❌ Error JSON: {e}")
         except Exception as e:
-            logger.error(f"❌ Error procesando mensaje: {e}", exc_info=True)
+            logger.error(f"❌ Error procesando datos de sensores: {e}", exc_info=True)
+    
+    def _handle_alert(self, msg):
+        """
+        Procesar mensaje de alerta.
+        Formato esperado:
+        {
+            "device_id": "ESP32-001",
+            "timestamp": "2025-12-08T14:30:00Z",
+            "alert_type": "HIGH_HEART_RATE",
+            "severity": "WARNING",
+            "message": "Ritmo cardíaco elevado detectado: 137 BPM",
+            "heart_rate": 137.0,
+            "spo2": 96.7
+        }
+        """
+        try:
+            from apps.analytics.models import Alert
+            
+            payload = json.loads(msg.payload.decode())
+            device_id = payload.get('device_id')
+            
+            logger.warning(f"🚨 ALERTA recibida de {device_id}")
+            
+            # Buscar dispositivo
+            try:
+                device = Device.objects.get(device_identifier=device_id, is_active=True)
+            except Device.DoesNotExist:
+                logger.warning(f"⚠️  Dispositivo no encontrado: {device_id}")
+                return
+            
+            # Parsear timestamp
+            timestamp_str = payload.get('timestamp')
+            if timestamp_str:
+                try:
+                    from dateutil import parser as date_parser
+                    timestamp = date_parser.parse(timestamp_str)
+                except Exception:
+                    timestamp = timezone.now()
+            else:
+                timestamp = timezone.now()
+            
+            # Crear alerta en la base de datos
+            alert = Alert.objects.create(
+                employee=device.employee,
+                device=device,
+                alert_type=payload.get('alert_type', 'UNKNOWN'),
+                severity=payload.get('severity', 'WARNING'),
+                message=payload.get('message', 'Alerta del dispositivo'),
+                heart_rate=payload.get('heart_rate'),
+                spo2=payload.get('spo2'),
+                timestamp=timestamp,
+                is_acknowledged=False
+            )
+            
+            logger.warning(f"🚨 Alerta guardada: {alert.alert_type} - {alert.message}")
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ Error JSON en alerta: {e}")
+        except Exception as e:
+            logger.error(f"❌ Error procesando alerta: {e}", exc_info=True)
     
     def on_subscribe(self, client, userdata, mid, granted_qos):
         """Callback cuando se completa la suscripción"""

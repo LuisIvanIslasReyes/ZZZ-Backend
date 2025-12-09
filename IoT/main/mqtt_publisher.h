@@ -6,7 +6,7 @@
 #include "esp_err.h"
 
 // Configuración del servidor MQTT (ajusta según tu backend)
-#define MQTT_BROKER_URI     "mqtt://192.168.3.67:1883"  // Cambiar a IP de tu servidor
+#define MQTT_BROKER_URI     "mqtt://172.18.5.137:1883"  // Cambiar a IP de tu servidor
 #define MQTT_USERNAME       ""                        // Usuario MQTT (si aplica)
 #define MQTT_PASSWORD       ""                        // Contraseña MQTT (si aplica)
 
@@ -29,6 +29,18 @@ typedef struct {
 } sensor_payload_t;
 
 /**
+ * @brief Estructura para alertas de salud
+ */
+typedef struct {
+    char device_id[32];      // Identificador del dispositivo
+    char alert_type[32];     // Tipo de alerta ("HIGH_HEART_RATE", "LOW_SPO2", etc.)
+    char severity[16];       // Severidad ("WARNING", "CRITICAL")
+    char message[128];       // Mensaje descriptivo
+    uint32_t heart_rate_bpm; // BPM actual
+    float spo2;              // SpO2 actual
+} alert_payload_t;
+
+/**
  * @brief Inicializa la conexión MQTT y WiFi
  * @param wifi_ssid Nombre de la red WiFi
  * @param wifi_password Contraseña WiFi
@@ -42,6 +54,13 @@ esp_err_t mqtt_publisher_init(const char *wifi_ssid, const char *wifi_password);
  * @return ESP_OK si la publicación fue exitosa
  */
 esp_err_t mqtt_publish_sensor_data(const sensor_payload_t *payload);
+
+/**
+ * @brief Publica una alerta de salud al broker MQTT
+ * @param payload Estructura con los datos de la alerta
+ * @return ESP_OK si la publicación fue exitosa
+ */
+esp_err_t mqtt_publish_alert(const alert_payload_t *payload);
 
 /**
  * @brief Verifica si el cliente MQTT está conectado

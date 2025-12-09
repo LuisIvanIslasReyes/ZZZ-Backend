@@ -16,16 +16,18 @@
 #define XD58C_ADC_BITWIDTH      ADC_BITWIDTH_12
 #define XD58C_ADC_SAMPLES       10  // Número de muestras para promedio
 
-// Configuración basada en VALORES REALES MEDIDOS:
-// - Sin presión (dedo mal): ~2700-2760 mV (señal ALTA, variación <20 mV)
-// - Con presión (dedo bien): ~1650-1700 mV (señal BAJA, variación ~500 mV)
-// ⚠️ SENSOR REQUIERE PRESIÓN: señal baja = buena lectura
-#define XD58C_MAX_SIGNAL_THRESHOLD  2200  // Si señal > 2200mV = sin presión
-#define XD58C_MIN_RANGE_MV          100   // Rango mínimo para detección válida
+// Configuración AUTO-CALIBRADA (se adapta a luz ambiente)
+// El sensor XD58C es una fotoresistencia que varía con:
+// - Luz ambiente (afecta baseline)
+// - Presión del dedo (afecta amplitud)
+// - Flujo sanguíneo (crea pulsos)
+#define XD58C_CALIBRATION_TIME_MS   10000  // 10 segundos de calibración inicial
+#define XD58C_MIN_RANGE_MV          30    // Rango mínimo para detección válida (REDUCIDO)
 #define XD58C_BASELINE_SAMPLES      50    // Muestras para baseline adaptativo
 #define XD58C_SAMPLE_WINDOW         5000  // Ventana de 5 segundos para calcular BPM
 #define XD58C_MIN_BPM               40    // BPM mínimo válido
 #define XD58C_MAX_BPM               180   // BPM máximo válido
+#define XD58C_MIN_SIGNAL_CHANGE     10    // Cambio mínimo en mV para detectar dedo (10mV)
 
 /**
  * @brief Estructura para algoritmo adaptativo de detección de pulso
@@ -53,6 +55,14 @@ typedef struct {
     // Estadísticas para umbral dinámico
     int min_signal;            // Señal mínima en ventana
     int max_signal;            // Señal máxima en ventana
+    
+    // AUTO-CALIBRACIÓN
+    bool calibration_done;     // true cuando calibración completa
+    uint32_t calibration_start;// Timestamp inicio calibración
+    int calibration_samples;   // Muestras recolectadas
+    int ambient_baseline;      // Baseline del ambiente (sin dedo)
+    int signal_with_finger;    // Señal con dedo puesto
+    bool auto_threshold;       // Usar umbral automático
 } xd58c_heartrate_t;
 
 /**

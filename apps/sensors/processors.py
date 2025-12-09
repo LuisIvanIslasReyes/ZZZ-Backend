@@ -197,13 +197,27 @@ class MetricsProcessor:
         accel_y_list = list(sensor_data.values_list('accel_y', flat=True))
         accel_z_list = list(sensor_data.values_list('accel_z', flat=True))
         
-        # Calcular métricas de HR
-        hr_avg = float(np.mean(hr_list))
-        hr_max = float(np.max(hr_list))
-        hr_min = float(np.min(hr_list))
-        hrv_rmssd = self.calculate_hrv_rmssd(hr_list)
-        hrv_sdnn = self.calculate_hrv_sdnn(hr_list)
-        hr_trend = self.detect_hr_trend(hr_list)
+        # FILTRAR BPM = 0 (falsos negativos del sensor XD58C)
+        hr_list_filtered = [hr for hr in hr_list if hr > 0]
+        
+        # Validar mínimo de registros válidos (al menos 50% deben ser válidos)
+        if not hr_list_filtered:
+            logger.warning(f"⚠️ {device.device_identifier}: Todos los BPM son 0, saltando ventana")
+            return None
+        elif len(hr_list_filtered) < len(hr_list) * 0.5:
+            logger.warning(f"⚠️ {device.device_identifier}: Menos del 50% de datos válidos ({len(hr_list_filtered)}/{len(hr_list)}), saltando ventana")
+            return None
+        elif len(hr_list_filtered) < len(hr_list):
+            removed = len(hr_list) - len(hr_list_filtered)
+            logger.info(f"🔧 {device.device_identifier}: Filtrados {removed} registros con BPM=0")
+        
+        # Calcular métricas de HR (usando lista filtrada)
+        hr_avg = float(np.mean(hr_list_filtered))
+        hr_max = float(np.max(hr_list_filtered))
+        hr_min = float(np.min(hr_list_filtered))
+        hrv_rmssd = self.calculate_hrv_rmssd(hr_list_filtered)  # Usar lista filtrada
+        hrv_sdnn = self.calculate_hrv_sdnn(hr_list_filtered)    # Usar lista filtrada
+        hr_trend = self.detect_hr_trend(hr_list_filtered)       # Usar lista filtrada
         
         # Calcular métricas de SpO2
         spo2_avg = float(np.mean(spo2_list))

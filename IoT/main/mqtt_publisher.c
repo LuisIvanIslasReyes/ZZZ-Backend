@@ -31,7 +31,9 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
 // Callbacks MQTT
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, 
                                int32_t event_id, void *event_data) {
-    esp_mqtt_event_handle_t event = event_data;
+    (void)handler_args;  // Marcar como intencionalmente no usado
+    (void)base;          // Marcar como intencionalmente no usado
+    (void)event_data;    // Marcar como intencionalmente no usado
     
     switch ((esp_mqtt_event_id_t)event_id) {
         case MQTT_EVENT_CONNECTED:
@@ -111,9 +113,9 @@ esp_err_t mqtt_publisher_init(const char *wifi_ssid, const char *wifi_password) 
     
     ESP_LOGI(TAG, "🔌 Conectando a WiFi: %s", wifi_ssid);
     
-    // Esperar conexión WiFi (máximo 10 segundos)
+    // Esperar conexión WiFi (máximo 60 segundos)
     int retry = 0;
-    while (retry < 20) {
+    while (retry < 120) {
         esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
         esp_netif_ip_info_t ip_info;
         if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
@@ -123,9 +125,10 @@ esp_err_t mqtt_publisher_init(const char *wifi_ssid, const char *wifi_password) 
         retry++;
     }
     
-    if (retry >= 20) {
-        ESP_LOGE(TAG, "❌ Timeout conectando a WiFi");
-        return ESP_FAIL;
+    if (retry >= 120) {
+        ESP_LOGE(TAG, "❌ Timeout conectando a WiFi (60 segundos)");
+        ESP_LOGW(TAG, "⚠️  Continuando sin WiFi - reintentará en background");
+        // No retornar ESP_FAIL - permitir que continúe y se conecte después
     }
     
     // ========== CONFIGURAR MQTT ==========
@@ -213,6 +216,64 @@ esp_err_t mqtt_publish_sensor_data(const sensor_payload_t *payload) {
         return ESP_OK;
     } else {
         ESP_LOGE(TAG, "❌ Error publicando datos");
+        return ESP_FAIL;
+    }
+}
+
+esp_err_t mqtt_publish_alert(const alert_payload_t *payload) {
+    if (payload == NULL) {
+        ESP_LOGE(TAG, "Alert payload nulo");
+        return ESP_ERR_INVALID_ARG;
+    }
+    
+    if (!mqtt_connected) {
+        ESP_LOGW(TAG, "MQTT no conectado, no se puede enviar alerta");
+        return ESP_ERR_INVALID_STATE;
+    }
+    
+    // Obtener timestamp ISO 8601
+    time_t now;
+    struct tm timeinfo;
+    char timestamp[32];
+    
+    time(&now);
+    gmtime_r(&now, &timeinfo);
+    strftime(timestamp, sizeof(timestamp), "%Y-%m-%dT%H:%M:%SZ", &timeinfo);
+    
+    // Construir JSON para alerta
+    char json_payload[512];
+    snprintf(json_payload, sizeof(json_payload),
+             "{"
+             "\"device_id\":\"%s\","
+             "\"timestamp\":\"%s\","
+             "\"alert_type\":\"%s\","
+             "\"severity\":\"%s\","
+             "\"message\":\"%s\","
+             "\"heart_rate\":%.1f,"
+             "\"spo2\":%.1f"
+             "}",
+             payload->device_id,
+             timestamp,
+             payload->alert_type,
+             payload->severity,
+             payload->message,
+             (float)payload->heart_rate_bpm,
+             payload->spo2);
+    
+    // Topic para alertas: devices/{device_id}/alerts
+    char alert_topic[128];
+    snprintf(alert_topic, sizeof(alert_topic), "devices/%s/alerts", payload->device_id);
+    
+    // Publicar mensaje
+    int msg_id = esp_mqtt_client_publish(mqtt_client, alert_topic, json_payload, 0, 1, 0);
+    
+    if (msg_id >= 0) {
+        ESP_LOGW(TAG, "🚨 ALERTA publicada: %s (msg_id=%d)", payload->alert_type, msg_id);
+        ESP_LOGW(TAG, "   Mensaje: %s", payload->message);
+        ESP_LOGD(TAG, "   Payload: %s", json_payload);
+        return ESP_OK;
+    } else {
+        ESP_LOGE(TAG, "❌ Error publicando alerta");
         return ESP_FAIL;
     }
 }
